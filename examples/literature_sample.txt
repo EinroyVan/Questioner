@@ -1,0 +1,9 @@
+Background: N6-methyladenosine (m6A) is the most abundant internal modification on eukaryotic mRNA. METTL3, together with METTL14 and WTAP, forms the m6A methyltransferase complex that deposits m6A marks on target transcripts. FTO and ALKBH5 act as demethylases that remove m6A modifications.
+
+In hepatocellular carcinoma (HCC), RNA-seq and MeRIP-seq analysis of 120 tumor-normal pairs showed that METTL3 was significantly upregulated in tumors (fold change = 2.4, p < 0.001). Knockdown of METTL3 in HepG2 and Huh7 cells reduced cell proliferation by approximately 45% (p < 0.01) and impaired xenograft tumor growth in nude mice (tumor volume reduced by 60% at day 28, p < 0.001).
+
+Mechanistically, METTL3-mediated m6A modification stabilizes SOCS2 mRNA through reader protein YTHDF2-dependent reduction of mRNA decay. SOCS2 is a negative regulator of the JAK/STAT signaling pathway. Rescue experiments demonstrated that SOCS2 overexpression partially reversed the proliferation defect caused by METTL3 knockdown (p < 0.05), whereas SOCS2 silencing abolished the tumor-suppressive effect of METTL3 depletion.
+
+Clinically, high METTL3 expression correlated with shorter overall survival in the HCC cohort (HR = 1.82, 95% CI 1.21–2.74, p = 0.004). Multivariate Cox regression identified METTL3 as an independent prognostic factor after adjusting for tumor stage and AFP levels.
+
+Conclusion: METTL3 promotes HCC progression by enhancing m6A-dependent stabilization of SOCS2 mRNA, thereby derepressing JAK/STAT signaling. Targeting the METTL3–m6A–SOCS2 axis may represent a therapeutic strategy for HCC.

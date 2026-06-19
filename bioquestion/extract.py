@@ -1,0 +1,61 @@
+"""Step 1: Extract knowledge points from biomedical literature."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from pydantic import BaseModel, Field
+
+from bioquestion.llm import LLMClient
+from bioquestion.prompts import EXTRACT_SYSTEM
+from bioquestion.schemas import KnowledgeExtractionResult, KnowledgePoint
+
+MAX_INPUT_CHARS = 18000
+
+
+class _ExtractLLMResponse(BaseModel):
+    has_substantive_content: bool = True
+    entities: list[str] = Field(default_factory=list)
+    knowledge_points: list[KnowledgePoint] = Field(default_factory=list)
+    summary: str = ""
+
+
+def _trim_input(text: str) -> str:
+    if len(text) <= MAX_INPUT_CHARS:
+        return text
+    return (
+        text[:MAX_INPUT_CHARS]
+        + "\n\n[Note: text truncated due to length; extract the most important knowledge points from the excerpt above.]"
+    )
+
+
+def extract_knowledge(text: str, llm: LLMClient | None = None) -> KnowledgeExtractionResult:
+    client = llm or LLMClient()
+    trimmed = _trim_input(text.strip())
+    preview = trimmed[:200] + ("..." if len(trimmed) > 200 else "")
+    response = client.complete_json(
+        EXTRACT_SYSTEM,
+        f"Analyze the following biomedical literature excerpt:\n\n{trimmed}",
+        _ExtractLLMResponse,
+    )
+    return KnowledgeExtractionResult(
+        source_text_preview=preview,
+        has_substantive_content=response.has_substantive_content,
+        entities=response.entities,
+        knowledge_points=response.knowledge_points,
+        summary=response.summary,
+    )
+
+
+def save_knowledge(result: KnowledgeExtractionResult, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def load_knowledge(path: Path) -> KnowledgeExtractionResult:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return KnowledgeExtractionResult.model_validate(data)

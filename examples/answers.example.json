@@ -1,0 +1,24 @@
+{
+  "answers": [
+    {
+      "question_id": "Q1",
+      "answer": ["A", "C"]
+    },
+    {
+      "question_id": "Q2",
+      "answer": ["B"]
+    },
+    {
+      "question_id": "Q3",
+      "answer": ["A", "D"]
+    },
+    {
+      "question_id": "Q4",
+      "answer": "METTL3通过m6A修饰稳定SOCS2 mRNA，抑制JAK/STAT通路，从而影响HCC增殖。"
+    },
+    {
+      "question_id": "Q5",
+      "answer": "临床数据显示METTL3高表达与更短OS相关，HR=1.82，且多因素Cox分析提示其为独立预后因子。"
+    }
+  ]
+}
