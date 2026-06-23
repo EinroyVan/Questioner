@@ -13,11 +13,14 @@ from bioquestion.schemas import (
     GradingReport,
     KnowledgeExtractionResult,
     KnowledgePoint,
+    LogicQuestion,
     MultipleChoiceQuestion,
+    Question,
     QuestionGradingResult,
     QuestionType,
     QuizResult,
     ShortAnswerQuestion,
+    SingleChoiceQuestion,
     UserAnswerSheet,
 )
 
@@ -146,9 +149,13 @@ def _format_user_mc(answer: list[str] | None) -> str:
 
 def _format_question_error(
     item: QuestionGradingResult,
-    q: MultipleChoiceQuestion | ShortAnswerQuestion | None,
+    q: Question | None,
 ) -> str:
-    if item.question_type == QuestionType.MULTIPLE_CHOICE and item.choice_detail:
+    if item.question_type in (
+        QuestionType.MULTIPLE_CHOICE,
+        QuestionType.SINGLE_CHOICE,
+        QuestionType.LOGIC,
+    ) and item.choice_detail:
         d = item.choice_detail
         parts: list[str] = []
         if d.wrong:
@@ -396,10 +403,18 @@ def build_report_markdown(
         lines.append(f"### {item.question_id} {verdict} ({item.score:.1f}/{item.max_score:.1f} pts)")
         lines.append("")
         if q:
-            lines.append(f"**Question:** {q.stem}")
-            lines.append("")
+            if isinstance(q, LogicQuestion):
+                if q.stem:
+                    lines.append(f"**Question:** {q.stem}")
+                    lines.append("")
+                lines.append(f"**α:** {q.description_alpha}")
+                lines.append(f"**β:** {q.description_beta}")
+                lines.append("")
+            else:
+                lines.append(f"**Question:** {q.stem}")
+                lines.append("")
 
-        if isinstance(q, MultipleChoiceQuestion) and item.choice_detail:
+        if item.choice_detail and not isinstance(q, ShortAnswerQuestion):
             d = item.choice_detail
             lines.append(f"**Your answer:** {_format_user_mc(d.user_answers)}")
             lines.append(f"**Correct answer:** {', '.join(sorted(d.correct_answers))}")
@@ -484,9 +499,15 @@ def build_report_html(
             f"— {item.score:.1f}/{item.max_score:.1f} pts</h3>"
         )
         if q:
-            parts.append(f"<p><strong>Question:</strong> {_esc(q.stem)}</p>")
+            if isinstance(q, LogicQuestion):
+                if q.stem:
+                    parts.append(f"<p><strong>Question:</strong> {_esc(q.stem)}</p>")
+                parts.append(f"<p><strong>α:</strong> {_esc(q.description_alpha)}</p>")
+                parts.append(f"<p><strong>β:</strong> {_esc(q.description_beta)}</p>")
+            else:
+                parts.append(f"<p><strong>Question:</strong> {_esc(q.stem)}</p>")
 
-        if isinstance(q, MultipleChoiceQuestion) and item.choice_detail:
+        if item.choice_detail and not isinstance(q, ShortAnswerQuestion):
             d = item.choice_detail
             if item.is_correct:
                 parts.append(
@@ -504,12 +525,13 @@ def build_report_html(
                     f"{_esc(', '.join(sorted(d.correct_answers)))}</p>"
                 )
                 parts.append("<ul>")
-                for key, text, status in _mc_option_lines(q, item):
-                    if status in ("wrong", "missed"):
-                        label = "Wrongly selected" if status == "wrong" else "Missed"
-                        parts.append(
-                            f'<li><span class="tag-wrong">{_esc(key)}. {_esc(text)} [{label}]</span></li>'
-                        )
+                if isinstance(q, MultipleChoiceQuestion):
+                    for key, text, status in _mc_option_lines(q, item):
+                        if status in ("wrong", "missed"):
+                            label = "Wrongly selected" if status == "wrong" else "Missed"
+                            parts.append(
+                                f'<li><span class="tag-wrong">{_esc(key)}. {_esc(text)} [{label}]</span></li>'
+                            )
                 parts.append("</ul>")
 
         elif isinstance(q, ShortAnswerQuestion):

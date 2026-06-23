@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -13,15 +14,15 @@ from pydantic import BaseModel
 from bioquestion.schemas import GradingReport, QuizMode
 
 HISTORY_PATH = Path("output") / "stats" / "score_history.jsonl"
+PROFILE_PATH = Path("output") / "stats" / "profile.json"
 TREND_DAYS = 10
 MIN_SUBMISSIONS_PER_BUCKET = 3
 LEADERBOARD_API_HOST = "127.0.0.1"
 LEADERBOARD_API_PORT = 8765
+NICKNAME_MAX_FULLWIDTH = 11  # strictly less than 12 full-width characters
 
 
 class ScoreRecord(BaseModel):
-    """One graded normal-mode submission."""
-
     timestamp: str
     date: str
     score: float
@@ -30,6 +31,43 @@ class ScoreRecord(BaseModel):
     mode: str = QuizMode.NORMAL.value
     source_label: str = ""
     user_name: str = ""
+
+
+class UserProfile(BaseModel):
+    nickname: str = ""
+
+
+def fullwidth_char_count(text: str) -> int:
+    """Count characters as full-width units (CJK=1, half-width ASCII=1 each)."""
+    return len(text.strip())
+
+
+def validate_nickname(nickname: str) -> tuple[bool, str]:
+    name = nickname.strip()
+    if not name:
+        return False, "Nickname is required."
+    if fullwidth_char_count(name) >= 12:
+        return False, "Nickname must be fewer than 12 full-width characters."
+    if re.search(r"[\x00-\x1f]", name):
+        return False, "Nickname contains invalid characters."
+    return True, ""
+
+
+def load_profile(path: Path = PROFILE_PATH) -> UserProfile:
+    if not path.exists():
+        return UserProfile()
+    try:
+        return UserProfile.model_validate(json.loads(path.read_text(encoding="utf-8")))
+    except (json.JSONDecodeError, ValueError):
+        return UserProfile()
+
+
+def save_profile(profile: UserProfile, path: Path = PROFILE_PATH) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(profile.model_dump(mode="json"), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 def leaderboard_api_url() -> str:
@@ -43,9 +81,14 @@ def append_score_record(
     user_name: str = "",
     path: Path = HISTORY_PATH,
 ) -> None:
-    """Append a normal-mode graded submission to local history."""
-    if not report.scoring_enabled or report.quiz_mode != QuizMode.NORMAL:
+    if not report.scoring_enabled:
         return
+    if report.quiz_mode not in (QuizMode.NORMAL, QuizMode.CUSTOM):
+        return
+
+    ok, msg = validate_nickname(user_name)
+    if not ok:
+        raise ValueError(msg)
 
     now = datetime.now()
     record = ScoreRecord(
@@ -54,7 +97,7 @@ def append_score_record(
         score=report.total_score,
         max_score=report.max_score,
         percentage=report.percentage,
-        mode=QuizMode.NORMAL.value,
+        mode=report.quiz_mode.value,
         source_label=source_label,
         user_name=user_name.strip(),
     )
@@ -66,7 +109,6 @@ def append_score_record(
 def load_score_records(path: Path = HISTORY_PATH) -> list[ScoreRecord]:
     if not path.exists():
         return []
-
     records: list[ScoreRecord] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
@@ -95,18 +137,13 @@ def build_recent_score_trend(
     end_date: date | None = None,
     num_days: int = TREND_DAYS,
 ) -> list[dict[str, Any]]:
-    """Build bar-chart buckets from the last calendar days.
-
-    Days with ≤3 submissions are merged forward until the bucket has >3
-    submissions or the window ends.
-    """
     end = end_date or date.today()
     start = end - timedelta(days=num_days - 1)
     window_days = [start + timedelta(days=i) for i in range(num_days)]
 
     daily_scores: dict[date, list[float]] = defaultdict(list)
     for record in records:
-        if record.mode != QuizMode.NORMAL.value:
+        if record.mode not in (QuizMode.NORMAL.value, QuizMode.CUSTOM.value):
             continue
         record_date = _parse_record_date(record)
         if record_date is None or record_date < start or record_date > end:
@@ -145,8 +182,8 @@ def build_recent_score_trend(
 
 
 def personal_stats_summary(records: list[ScoreRecord]) -> dict[str, Any]:
-    normal = [r for r in records if r.mode == QuizMode.NORMAL.value]
-    if not normal:
+    scored = [r for r in records if r.mode in (QuizMode.NORMAL.value, QuizMode.CUSTOM.value)]
+    if not scored:
         return {
             "total_submissions": 0,
             "average_score": None,
@@ -154,15 +191,15 @@ def personal_stats_summary(records: list[ScoreRecord]) -> dict[str, Any]:
             "recent_7_day_average": None,
         }
 
-    percentages = [r.percentage for r in normal]
+    percentages = [r.percentage for r in scored]
     cutoff = date.today() - timedelta(days=6)
     recent = [
         r.percentage
-        for r in normal
+        for r in scored
         if (d := _parse_record_date(r)) is not None and d >= cutoff
     ]
     return {
-        "total_submissions": len(normal),
+        "total_submissions": len(scored),
         "average_score": round(sum(percentages) / len(percentages), 1),
         "best_score": round(max(percentages), 1),
         "recent_7_day_average": round(sum(recent) / len(recent), 1) if recent else None,

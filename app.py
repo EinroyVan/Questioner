@@ -21,29 +21,36 @@ load_dotenv(_ENV_FILE, override=False)
 from bioquestion import __version__
 from bioquestion.extract import extract_knowledge, save_knowledge
 from bioquestion.grade import grade_answers, save_report
-from bioquestion.i18n import LANGUAGES, build_translation_map
+from bioquestion.i18n import LANGUAGES, apply_placeholders, build_translation_map
 from bioquestion.llm import LLMClient
 from bioquestion.pdf_reader import load_uploaded_document
 from bioquestion.providers import LLMProvider, PROVIDER_SPECS, provider_is_configured
 from bioquestion.quiz import generate_quiz, save_quiz
 from bioquestion.report_note import build_study_report_bundle
 from bioquestion.schemas import (
+    CustomQuizCounts,
     GradingReport,
     KnowledgeExtractionResult,
+    LogicQuestion,
     MultipleChoiceQuestion,
     QuizMode,
     QuizResult,
     ShortAnswerQuestion,
+    SingleChoiceQuestion,
     UserAnswer,
     UserAnswerSheet,
 )
 from bioquestion.stats import (
     LEADERBOARD_API_PORT,
+    UserProfile,
     append_score_record,
     build_recent_score_trend,
     leaderboard_api_url,
+    load_profile,
     load_score_records,
     personal_stats_summary,
+    save_profile,
+    validate_nickname,
 )
 from bioquestion.ui_strings import UI_STRINGS
 
@@ -62,12 +69,24 @@ CATEGORY_KEYS = {
 
 OUTPUT_DIR = Path("output")
 
+LOGIC_OPTION_UI_KEYS = {
+    "A": "quiz.logic_option_a",
+    "B": "quiz.logic_option_b",
+    "C": "quiz.logic_option_c",
+    "D": "quiz.logic_option_d",
+    "E": "quiz.logic_option_e",
+}
+
+
+def _logic_option_labels() -> dict[str, str]:
+    return {key: t(ui_key) for key, ui_key in LOGIC_OPTION_UI_KEYS.items()}
+
 
 def t(key: str, **kwargs: object) -> str:
     catalog = st.session_state.get("ui_strings") or UI_STRINGS
     text = catalog.get(key, UI_STRINGS.get(key, key))
     if kwargs:
-        return text.format(**kwargs)
+        return apply_placeholders(text, **kwargs)
     return text
 
 
@@ -83,6 +102,11 @@ def _init_session() -> None:
         "source_label": "input.pasted_label",
         "answers_submitted": False,
         "quiz_mode": QuizMode.NORMAL.value,
+        "custom_single": 2,
+        "custom_multi": 3,
+        "custom_logic": 2,
+        "custom_sa": 1,
+        "show_custom_form": False,
         "user_display_name": "",
         "ui_lang": "en",
         "ui_strings": dict(UI_STRINGS),
@@ -105,6 +129,10 @@ def _sync_translations(lang: str) -> None:
 def _go_to_step(step: int) -> None:
     st.session_state.step = step
     st.rerun()
+
+
+def _ui_language() -> str:
+    return st.session_state.get("ui_lang", "en")
 
 
 def _get_llm() -> LLMClient:
@@ -188,14 +216,26 @@ def _render_sidebar() -> None:
     with st.sidebar.expander(t("sidebar.provider_rules_title"), expanded=False):
         st.markdown(t("sidebar.provider_rules_body"))
 
+    profile = load_profile()
+    if not st.session_state.get("user_display_name") and profile.nickname:
+        st.session_state.user_display_name = profile.nickname
+
     st.sidebar.divider()
     st.sidebar.caption(t("sidebar.profile"))
     user_name = st.sidebar.text_input(
         t("sidebar.display_name"),
         value=st.session_state.get("user_display_name", ""),
         placeholder=t("sidebar.display_name_ph"),
+        max_chars=11,
     )
+    st.sidebar.caption(t("sidebar.nickname_rule"))
     st.session_state.user_display_name = user_name.strip()
+    if user_name.strip():
+        ok, err = validate_nickname(user_name)
+        if not ok:
+            st.sidebar.warning(err)
+        else:
+            save_profile(UserProfile(nickname=user_name.strip()))
 
     st.sidebar.divider()
     st.sidebar.caption(t("sidebar.workflow"))
@@ -282,7 +322,7 @@ def _step_input() -> None:
             return
         with st.spinner(t("input.extracting")):
             try:
-                knowledge = extract_knowledge(text, _get_llm())
+                knowledge = extract_knowledge(text, _get_llm(), language=_ui_language())
             except Exception as exc:
                 st.error(t("input.extract_failed", error=exc))
                 return
@@ -338,21 +378,76 @@ def _step_knowledge() -> None:
 
     st.divider()
     st.caption(t("knowledge.mode_hint"))
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         if st.button(t("common.back")):
             _go_to_step(0)
     with col2:
         generate_btn = st.button(t("knowledge.generate_quiz"), type="primary", use_container_width=True)
     with col3:
-        ez_btn = st.button(t("knowledge.generate_ez"), use_container_width=True)
+        easy_btn = st.button(t("knowledge.generate_easy"), use_container_width=True)
+    with col4:
+        custom_btn = st.button(t("knowledge.generate_custom"), use_container_width=True)
 
-    if generate_btn or ez_btn:
-        mode = QuizMode.EZ if ez_btn else QuizMode.NORMAL
-        spinner_text = t("knowledge.generating_ez") if mode == QuizMode.EZ else t("knowledge.generating_normal")
+    if custom_btn:
+        st.session_state.show_custom_form = True
+
+    if st.session_state.get("show_custom_form"):
+        with st.form("custom_quiz_form"):
+            st.markdown(f"**{t('knowledge.custom_title')}**")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                n_sc = st.number_input(t("knowledge.custom_single"), 0, 10, st.session_state.custom_single)
+            with c2:
+                n_ms = st.number_input(t("knowledge.custom_multi"), 0, 10, st.session_state.custom_multi)
+            with c3:
+                n_lg = st.number_input(t("knowledge.custom_logic"), 0, 10, st.session_state.custom_logic)
+            with c4:
+                n_sa = st.number_input(t("knowledge.custom_sa"), 0, 5, st.session_state.custom_sa)
+            submit_custom = st.form_submit_button(t("knowledge.custom_confirm"), type="primary")
+            if submit_custom:
+                if n_sc + n_ms + n_lg + n_sa == 0:
+                    st.error(t("knowledge.custom_empty"))
+                else:
+                    st.session_state.custom_single = int(n_sc)
+                    st.session_state.custom_multi = int(n_ms)
+                    st.session_state.custom_logic = int(n_lg)
+                    st.session_state.custom_sa = int(n_sa)
+                    counts = CustomQuizCounts(
+                        single_choice=int(n_sc),
+                        multiple_choice=int(n_ms),
+                        logic=int(n_lg),
+                        short_answer=int(n_sa),
+                    )
+                    with st.spinner(t("knowledge.generating_custom")):
+                        try:
+                            quiz = generate_quiz(
+                                knowledge,
+                                _get_llm(),
+                                mode=QuizMode.CUSTOM,
+                                language=_ui_language(),
+                                custom_counts=counts,
+                            )
+                        except Exception as exc:
+                            st.error(t("knowledge.quiz_failed", error=exc))
+                            return
+                    st.session_state.quiz = quiz
+                    st.session_state.quiz_mode = QuizMode.CUSTOM.value
+                    st.session_state.show_custom_form = False
+                    st.session_state.report = None
+                    st.session_state.step = 2
+                    st.rerun()
+
+    if generate_btn or easy_btn:
+        mode = QuizMode.EASY if easy_btn else QuizMode.NORMAL
+        spinner_text = (
+            t("knowledge.generating_easy") if mode == QuizMode.EASY else t("knowledge.generating_normal")
+        )
         with st.spinner(spinner_text):
             try:
-                quiz = generate_quiz(knowledge, _get_llm(), mode=mode)
+                quiz = generate_quiz(
+                    knowledge, _get_llm(), mode=mode, language=_ui_language()
+                )
             except Exception as exc:
                 st.error(t("knowledge.quiz_failed", error=exc))
                 return
@@ -374,35 +469,57 @@ def _step_quiz() -> None:
             _go_to_step(1)
         return
 
-    is_ez = quiz.mode == QuizMode.EZ
-    st.caption(t("quiz.ez_caption") if is_ez else t("quiz.normal_caption"))
+    mode = quiz.mode
+    if mode == QuizMode.EASY:
+        st.caption(t("quiz.easy_caption"))
+    elif mode == QuizMode.CUSTOM:
+        st.caption(t("quiz.custom_caption"))
+    else:
+        st.caption(t("quiz.normal_caption"))
+
     answers: list[UserAnswer] = []
 
     for q in quiz.questions:
         st.markdown(f"### {q.id}")
-        if isinstance(q, MultipleChoiceQuestion):
+        if isinstance(q, SingleChoiceQuestion):
             st.markdown(q.stem)
             option_keys = sorted(q.options.keys())
-            if is_ez:
-                selected_key = st.radio(
-                    t("quiz.select_one"),
-                    options=option_keys,
-                    format_func=lambda key: f"{key}. {q.options[key]}",
-                    key=f"mc_{q.id}",
-                    label_visibility="collapsed",
-                )
-                answers.append(UserAnswer(question_id=q.id, answer=[selected_key]))
-            else:
-                option_labels = [f"{k}. {q.options[k]}" for k in option_keys]
-                label_to_key = {f"{k}. {q.options[k]}": k for k in option_keys}
-                selected_labels = st.multiselect(
-                    t("quiz.select_many"),
-                    options=option_labels,
-                    key=f"mc_{q.id}",
-                    label_visibility="collapsed",
-                )
-                selected = sorted(label_to_key[label] for label in selected_labels)
-                answers.append(UserAnswer(question_id=q.id, answer=selected))
+            selected_key = st.radio(
+                t("quiz.select_one"),
+                options=option_keys,
+                format_func=lambda key, opts=q.options: f"{key}. {opts[key]}",
+                key=f"sc_{q.id}",
+                label_visibility="collapsed",
+            )
+            answers.append(UserAnswer(question_id=q.id, answer=[selected_key]))
+        elif isinstance(q, MultipleChoiceQuestion):
+            st.markdown(q.stem)
+            option_keys = sorted(q.options.keys())
+            option_labels = [f"{k}. {q.options[k]}" for k in option_keys]
+            label_to_key = {f"{k}. {q.options[k]}": k for k in option_keys}
+            selected_labels = st.multiselect(
+                t("quiz.select_many"),
+                options=option_labels,
+                key=f"mc_{q.id}",
+                label_visibility="collapsed",
+            )
+            selected = sorted(label_to_key[label] for label in selected_labels)
+            answers.append(UserAnswer(question_id=q.id, answer=selected))
+        elif isinstance(q, LogicQuestion):
+            if q.stem:
+                st.markdown(q.stem)
+            st.markdown(f"**α:** {q.description_alpha}")
+            st.markdown(f"**β:** {q.description_beta}")
+            logic_keys = sorted(_logic_option_labels().keys())
+            logic_labels = _logic_option_labels()
+            selected_key = st.radio(
+                t("quiz.logic_select"),
+                options=logic_keys,
+                format_func=lambda key, labels=logic_labels: f"{key}. {labels[key]}",
+                key=f"lg_{q.id}",
+                label_visibility="collapsed",
+            )
+            answers.append(UserAnswer(question_id=q.id, answer=[selected_key]))
         elif isinstance(q, ShortAnswerQuestion):
             st.markdown(q.stem)
             text = st.text_area(
@@ -424,24 +541,29 @@ def _step_quiz() -> None:
         submit_btn = st.button(t("quiz.submit"), type="primary", use_container_width=True)
 
     if submit_btn:
-        empty_mc = [
-            a.question_id
-            for a in answers
-            if isinstance(a.answer, list) and len(a.answer) == 0
+        empty_choice = [
+            a.question_id for a in answers if isinstance(a.answer, list) and len(a.answer) == 0
         ]
         empty_sa = [
             a.question_id
             for a in answers
             if isinstance(a.answer, str) and not a.answer.strip()
         ]
-        if empty_mc or empty_sa:
-            st.warning(t("quiz.unanswered", ids=", ".join(empty_mc + empty_sa)))
+        if empty_choice or empty_sa:
+            st.warning(t("quiz.unanswered", ids=", ".join(empty_choice + empty_sa)))
             return
+
+        nickname = st.session_state.get("user_display_name", "")
+        if quiz.mode in (QuizMode.NORMAL, QuizMode.CUSTOM):
+            ok, err = validate_nickname(nickname)
+            if not ok:
+                st.error(t("grading.nickname_required", error=err))
+                return
 
         sheet = UserAnswerSheet(answers=answers)
         with st.spinner(t("quiz.grading")):
             try:
-                report = grade_answers(quiz, sheet, _get_llm())
+                report = grade_answers(quiz, sheet, _get_llm(), language=_ui_language())
             except Exception as exc:
                 st.error(t("quiz.grade_failed", error=exc))
                 return
@@ -457,11 +579,14 @@ def _step_quiz() -> None:
         )
         _persist_outputs(st.session_state.knowledge, quiz, report)
         if report.scoring_enabled:
-            append_score_record(
-                report,
-                source_label=st.session_state.get("source_label", ""),
-                user_name=st.session_state.get("user_display_name", ""),
-            )
+            try:
+                append_score_record(
+                    report,
+                    source_label=st.session_state.get("source_label", ""),
+                    user_name=nickname,
+                )
+            except ValueError as exc:
+                st.warning(str(exc))
         st.session_state.step = 3
         st.rerun()
 
@@ -564,10 +689,10 @@ def _step_grading() -> None:
         )
         st.progress(
             report.percentage / 100.0,
-            text=t("grading.score_progress", pct=report.percentage),
+            text=t("grading.score_progress", pct=f"{report.percentage:.1f}"),
         )
     else:
-        st.info(t("grading.ez_info"))
+        st.info(t("grading.easy_info"))
     st.subheader(t("grading.overall"))
     st.write(report.summary)
 
@@ -583,14 +708,20 @@ def _step_grading() -> None:
                 verdict = t("grading.verdict_incomplete")
 
         title_suffix = (
-            t("grading.pts_suffix", score=item.score, max=item.max_score)
+            t("grading.pts_suffix", score=f"{item.score:.1f}", max=f"{item.max_score:.1f}")
             if scoring_enabled and item.max_score > 0
             else ""
         )
         with st.expander(f"{item.question_id}  {verdict}  {title_suffix}".strip(), expanded=False):
             q = quiz_map.get(item.question_id)
             if q:
-                st.markdown(t("grading.question", stem=q.stem))
+                if isinstance(q, LogicQuestion):
+                    if q.stem:
+                        st.markdown(t("grading.question", stem=q.stem))
+                    st.markdown(f"**α:** {q.description_alpha}")
+                    st.markdown(f"**β:** {q.description_beta}")
+                else:
+                    st.markdown(t("grading.question", stem=q.stem))
 
             if item.choice_detail and scoring_enabled:
                 d = item.choice_detail
@@ -608,6 +739,18 @@ def _step_grading() -> None:
                     c3.warning(t("grading.extra", items=", ".join(d.extra)))
                 if d.missed and len(d.missed) > 2:
                     st.error(t("grading.missed_zero", items=", ".join(d.missed)))
+                elif (
+                    d.missed
+                    and d.wrong
+                    and len(d.correct_answers) == 1
+                ):
+                    st.error(
+                        t(
+                            "grading.single_miss_wrong_zero",
+                            missed=", ".join(d.missed),
+                            wrong=", ".join(d.wrong),
+                        )
+                    )
                 elif d.missed and len(d.missed) == 2 and d.wrong:
                     st.error(
                         t(

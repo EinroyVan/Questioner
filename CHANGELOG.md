@@ -1,0 +1,49 @@
+# Changelog
+
+All notable changes to BioQuestion are documented in this file.
+
+## [1.2.1] — 2026-06-22
+
+### Quiz modes & question types
+
+- Renamed **EZ mode** to **Easy mode**; single-choice questions are now strictly **4 options, pick 1** (A–D).
+- Reworked **Normal mode** structure and scoring (total **100 points**):
+  - Multi-select: 5 questions × **10 pts** (2 pts per option, A–E)
+  - Logic: 3 questions × **6 pts** (wrong answer = 0 pts)
+  - Short answer: 2 questions × **16 pts**
+- Added **Custom mode**: configure counts of single-choice, multi-select, logic, and short-answer questions.
+- Added **logic questions** with fixed A–E relationship template (α/β cause–effect and correctness).
+
+### Scoring
+
+- Multi-select: if the correct set has **only one option**, **1 miss + 1 wrong selection** scores **0**.
+- Updated penalty captions and grading UI to reflect 2-pt-per-option rules.
+
+### Localization
+
+- Knowledge extraction, quiz generation, and grading prompts now follow the **sidebar UI language**.
+- Logic option labels are translatable via UI strings.
+
+### Personal statistics
+
+- Scored submissions (Normal / Custom) require a **nickname** before saving.
+- Nickname must be **fewer than 12 full-width characters**; stored locally in `output/stats/profile.json`.
+- Score history supports Normal and Custom modes.
+
+### Other
+
+- Learning reports support logic and single-choice question types.
+- i18n cache bumped to v3 for new UI strings.
+
+## [1.2.0] — 2026-06-22
+
+- Multi-provider LLM backend (Google, OpenAI, Anthropic, OpenAI-compatible).
+- 12-language UI via Google Translate (`deep-translator`).
+- EZ mode (now Easy) and personal score analytics.
+- Placeholder-safe i18n (`[[placeholder]]` tokens).
+
+## [1.0.0] — Initial release
+
+- Literature upload (TXT/PDF with OCR).
+- Knowledge extraction → quiz generation → grading pipeline.
+- Streamlit web UI and CLI.

@@ -1,5 +1,18 @@
 """Prompt templates for the three workflow steps."""
 
+from bioquestion.schemas import LOGIC_OPTION_KEYS
+
+_LOGIC_OPTIONS_DOC = """
+Logic question master options (fixed for every logic item):
+A. Both α and β are correct, and α is the cause of β
+B. Both α and β are correct, and α is the effect of β (β is the cause)
+C. α is correct, β is incorrect
+D. β is correct, α is incorrect
+E. Both α and β are incorrect
+Each logic question must set description_alpha and description_beta in the stem context.
+correct_answer is exactly one letter A–E referring to the master options above.
+"""
+
 EXTRACT_SYSTEM = """You are a senior computational biologist and biomedical literature analyst.
 Extract the most academically valuable and clinically meaningful knowledge points from the excerpt.
 
@@ -28,129 +41,76 @@ Rules:
 - Every knowledge_point must include a traceable source_quote.
 - If the text lacks substantive academic content, set has_substantive_content=false and knowledge_points=[].
 - source_quote must be copied from the user text; do not invent quotes; max 200 characters each.
-- Output must be strictly valid JSON: escape double quotes inside strings, no comments or trailing commas.
-- Write all text fields in English."""
+- Output must be strictly valid JSON: escape double quotes inside strings, no comments or trailing commas."""
 
 
-QUIZ_SYSTEM = """You are a rigorous medical educator.
+QUIZ_NORMAL_SYSTEM = f"""You are a rigorous medical educator.
 Generate assessment questions that test deep understanding of the provided literature knowledge points.
 
 Rules:
-1. Exactly 5 multiple-select questions (Q1–Q5) + 2 short-answer questions (Q6–Q7).
-2. Every multiple-select question must have exactly 5 options with keys A, B, C, D, and E.
-3. Each multiple-select question may have one or more correct answers; distractors must be highly plausible.
-4. Strict paper fidelity:
-   - Q1–Q5 and Q6 must be answerable strictly from the provided knowledge points and source quotes.
-   - Do not introduce facts, mechanisms, or conclusions not supported by the paper.
-   - Q7 (the last short-answer question) may extend slightly beyond the paper for implications,
-     limitations, or translational relevance, but must still be grounded in what the paper actually shows.
-5. Depth: mechanism reasoning, experimental design logic, or clinical significance—not surface memorization.
-6. Write all question text, options, and answers in English.
+1. Exactly 5 multiple-select questions (Q1–Q5) + 3 logic questions (Q6–Q8) + 2 short-answer questions (Q9–Q10).
+2. Multiple-select: exactly 5 options A–E; one or more correct answers; highly plausible distractors.
+3. Logic questions: provide description_alpha and description_beta; use the fixed master options below.
+{_LOGIC_OPTIONS_DOC}
+4. Short-answer Q9 strictly from paper; Q10 may extend slightly if grounded in findings.
+5. Depth: mechanism reasoning, experimental design logic, or clinical significance.
+6. Strict paper fidelity for facts; do not invent unsupported claims.
 
 Output JSON:
-{
+{{
   "questions": [
-    {
+    {{
       "id": "Q1",
       "type": "multiple_choice",
-      "stem": "question stem",
-      "options": {"A": "...", "B": "...", "C": "...", "D": "...", "E": "..."},
+      "stem": "...",
+      "options": {{"A": "...", "B": "...", "C": "...", "D": "...", "E": "..."}},
       "correct_answers": ["A", "C"],
-      "explanation": "brief rationale tied to the paper",
-      "references": [{"knowledge_point_id": "KP-1", "source_quote": "..."}]
-    },
-    {
+      "explanation": "...",
+      "references": [{{"knowledge_point_id": "KP-1", "source_quote": "..."}}]
+    }},
+    {{
       "id": "Q6",
+      "type": "logic",
+      "description_alpha": "statement α",
+      "description_beta": "statement β",
+      "stem": "Given: α = ...; β = ...",
+      "correct_answer": "A",
+      "explanation": "...",
+      "references": [{{"knowledge_point_id": "KP-2", "source_quote": "..."}}]
+    }},
+    {{
+      "id": "Q9",
       "type": "short_answer",
-      "stem": "question stem strictly from the paper",
-      "standard_answer": "model answer",
-      "grading_keywords": ["required term 1", "required term 2"],
-      "logic_chain": ["logic step 1", "logic step 2"],
-      "references": [{"knowledge_point_id": "KP-2", "source_quote": "..."}]
-    },
-    {
-      "id": "Q7",
-      "type": "short_answer",
-      "stem": "slightly open-ended question grounded in the paper",
-      "standard_answer": "model answer",
-      "grading_keywords": ["required term 1"],
-      "logic_chain": ["logic step 1"],
-      "references": [{"knowledge_point_id": "KP-3", "source_quote": "..."}]
-    }
+      "stem": "...",
+      "standard_answer": "...",
+      "grading_keywords": ["term1"],
+      "logic_chain": ["step1"],
+      "references": [{{"knowledge_point_id": "KP-3", "source_quote": "..."}}]
+    }}
   ]
-}"""
+}}"""
 
 
-GRADE_SHORT_ANSWER_SYSTEM = """You are an objective and responsible academic mentor.
-Grade ONLY the short-answer questions in the submission.
-
-Scoring:
-- First short-answer question: 10 points maximum.
-- Second short-answer question: 15 points maximum.
-- Use the max_score provided for each question in the input payload.
-- Q6 (first short-answer) must be graded strictly against the paper content and standard answer.
-- Q7 (second short-answer) may accept reasonable extensions slightly beyond the paper if logically grounded in the findings.
-- Evaluate logical completeness and key terms—not literal string matching only.
-- Partial credit is allowed when appropriate.
-
-Output JSON:
-{
-  "question_results": [
-    {
-      "question_id": "Q6",
-      "question_type": "short_answer",
-      "score": 0-10,
-      "max_score": 10,
-      "is_correct": true/false,
-      "short_answer_detail": {
-        "matched_keywords": [],
-        "missing_keywords": [],
-        "logic_complete": false,
-        "feedback": "specific feedback"
-      },
-      "explanation": "detailed explanation with paper-based reasoning",
-      "references": [{"knowledge_point_id": "KP-1", "source_quote": "..."}]
-    },
-    {
-      "question_id": "Q7",
-      "question_type": "short_answer",
-      "score": 0-15,
-      "max_score": 15,
-      "is_correct": true/false,
-      "short_answer_detail": {
-        "matched_keywords": [],
-        "missing_keywords": [],
-        "logic_complete": false,
-        "feedback": "specific feedback"
-      },
-      "explanation": "detailed explanation with paper-based reasoning",
-      "references": [{"knowledge_point_id": "KP-2", "source_quote": "..."}]
-    }
-  ],
-  "summary": "brief overall comment on short-answer performance only"
-}"""
-
-
-QUIZ_EZ_SYSTEM = """You are a rigorous medical educator.
-Generate a lighter EZ-mode quiz for quick comprehension checks.
+QUIZ_EASY_SYSTEM = """You are a rigorous medical educator.
+Generate a lighter Easy-mode quiz for quick comprehension checks.
 
 Rules:
 1. Exactly 4 single-choice questions (Q1–Q4) + 1 short-answer question (Q5).
-2. Each single-choice question must have exactly 4 options (A, B, C, D) and exactly ONE correct answer.
-3. Questions must be answerable from the provided knowledge points and source quotes.
-4. Depth: mechanism reasoning, experimental logic, or clinical significance—not surface memorization.
-5. Write all question text, options, and answers in English.
+2. Each single-choice question must have exactly 4 options (A, B, C, D) and exactly ONE correct answer (field correct_answer as a single letter).
+3. Use type "single_choice" for Q1–Q4.
+4. Questions must be answerable from the provided knowledge points and source quotes.
+5. Depth: mechanism reasoning, experimental logic, or clinical significance.
 
 Output JSON:
 {
   "questions": [
     {
       "id": "Q1",
-      "type": "multiple_choice",
+      "type": "single_choice",
       "stem": "question stem",
       "options": {"A": "...", "B": "...", "C": "...", "D": "..."},
-      "correct_answers": ["B"],
-      "explanation": "brief rationale tied to the paper",
+      "correct_answer": "B",
+      "explanation": "brief rationale",
       "references": [{"knowledge_point_id": "KP-1", "source_quote": "..."}]
     },
     {
@@ -166,22 +126,38 @@ Output JSON:
 }"""
 
 
-GRADE_EZ_SHORT_ANSWER_SYSTEM = """You are an objective academic mentor.
-Provide qualitative feedback ONLY for EZ-mode short-answer responses. Do NOT assign numeric scores.
+def build_custom_quiz_system(counts: dict[str, int]) -> str:
+    sc, ms, lg, sa = counts["single_choice"], counts["multiple_choice"], counts["logic"], counts["short_answer"]
+    return f"""You are a rigorous medical educator.
+Generate a custom quiz with exactly:
+- {sc} single-choice question(s) (type single_choice, 4 options A–D, field correct_answer)
+- {ms} multiple-select question(s) (type multiple_choice, 5 options A–E, field correct_answers)
+- {lg} logic question(s) (type logic, fields description_alpha, description_beta, correct_answer)
+- {sa} short-answer question(s) (type short_answer)
 
-For each question:
-- Compare the user's answer to the standard answer and grading keywords.
-- Note matched concepts, gaps, and misconceptions.
-- Set is_correct to true only when the logical chain is substantially complete.
+{_LOGIC_OPTIONS_DOC}
+
+Number questions sequentially Q1, Q2, ... in the order: single-choice, then multiple-select, then logic, then short-answer.
+Strict paper fidelity; valid JSON only."""
+
+
+GRADE_SHORT_ANSWER_SYSTEM = """You are an objective and responsible academic mentor.
+Grade ONLY the short-answer questions in the submission.
+
+Scoring:
+- Each short-answer question is worth 16 points maximum.
+- Use the max_score provided for each question in the input payload.
+- Evaluate logical completeness and key terms—not literal string matching only.
+- Partial credit is allowed when appropriate.
 
 Output JSON:
 {
   "question_results": [
     {
-      "question_id": "Q5",
+      "question_id": "Q9",
       "question_type": "short_answer",
-      "score": 0,
-      "max_score": 0,
+      "score": 0-16,
+      "max_score": 16,
       "is_correct": true/false,
       "short_answer_detail": {
         "matched_keywords": [],
@@ -189,9 +165,24 @@ Output JSON:
         "logic_complete": false,
         "feedback": "specific feedback"
       },
-      "explanation": "detailed explanation with paper-based reasoning",
+      "explanation": "detailed explanation",
       "references": [{"knowledge_point_id": "KP-1", "source_quote": "..."}]
     }
   ],
   "summary": "brief overall comment on short-answer performance only"
 }"""
+
+
+GRADE_EASY_SHORT_ANSWER_SYSTEM = """You are an objective academic mentor.
+Provide qualitative feedback ONLY for Easy-mode short-answer responses. Do NOT assign numeric scores.
+
+Output JSON with score 0 and max_score 0 for each short-answer item."""
+
+
+LOGIC_OPTION_LABELS: dict[str, str] = {
+    "A": "Both α and β are correct; α is the cause of β",
+    "B": "Both α and β are correct; α is the effect of β (β is the cause)",
+    "C": "α is correct, β is incorrect",
+    "D": "β is correct, α is incorrect",
+    "E": "Both α and β are incorrect",
+}

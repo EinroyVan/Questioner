@@ -7,6 +7,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from bioquestion.i18n import augment_system_prompt_for_language
 from bioquestion.llm import LLMClient
 from bioquestion.prompts import EXTRACT_SYSTEM
 from bioquestion.schemas import KnowledgeExtractionResult, KnowledgePoint
@@ -30,12 +31,17 @@ def _trim_input(text: str) -> str:
     )
 
 
-def extract_knowledge(text: str, llm: LLMClient | None = None) -> KnowledgeExtractionResult:
+def extract_knowledge(
+    text: str,
+    llm: LLMClient | None = None,
+    language: str = "en",
+) -> KnowledgeExtractionResult:
     client = llm or LLMClient()
     trimmed = _trim_input(text.strip())
     preview = trimmed[:200] + ("..." if len(trimmed) > 200 else "")
+    system = augment_system_prompt_for_language(EXTRACT_SYSTEM, language)
     response = client.complete_json(
-        EXTRACT_SYSTEM,
+        system,
         f"Analyze the following biomedical literature excerpt:\n\n{trimmed}",
         _ExtractLLMResponse,
     )

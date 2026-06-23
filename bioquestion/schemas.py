@@ -33,18 +33,40 @@ class KnowledgeExtractionResult(BaseModel):
 
 
 class QuestionType(str, Enum):
+    SINGLE_CHOICE = "single_choice"
     MULTIPLE_CHOICE = "multiple_choice"
+    LOGIC = "logic"
     SHORT_ANSWER = "short_answer"
 
 
 class QuizMode(str, Enum):
     NORMAL = "normal"
-    EZ = "ez"
+    EASY = "easy"
+    CUSTOM = "custom"
+
+    @classmethod
+    def _missing_(cls, value: object) -> QuizMode | None:
+        if value == "ez":
+            return cls.EASY
+        return None
 
 
 class Reference(BaseModel):
     knowledge_point_id: str
     source_quote: str
+
+
+LOGIC_OPTION_KEYS = ("A", "B", "C", "D", "E")
+
+
+class SingleChoiceQuestion(BaseModel):
+    id: str
+    type: Literal[QuestionType.SINGLE_CHOICE] = QuestionType.SINGLE_CHOICE
+    stem: str
+    options: dict[str, str]
+    correct_answer: str
+    explanation: str = ""
+    references: list[Reference] = Field(default_factory=list)
 
 
 class MultipleChoiceQuestion(BaseModel):
@@ -53,6 +75,17 @@ class MultipleChoiceQuestion(BaseModel):
     stem: str
     options: dict[str, str]
     correct_answers: list[str]
+    explanation: str = ""
+    references: list[Reference] = Field(default_factory=list)
+
+
+class LogicQuestion(BaseModel):
+    id: str
+    type: Literal[QuestionType.LOGIC] = QuestionType.LOGIC
+    stem: str = ""
+    description_alpha: str
+    description_beta: str
+    correct_answer: str
     explanation: str = ""
     references: list[Reference] = Field(default_factory=list)
 
@@ -67,12 +100,21 @@ class ShortAnswerQuestion(BaseModel):
     references: list[Reference] = Field(default_factory=list)
 
 
+Question = SingleChoiceQuestion | MultipleChoiceQuestion | LogicQuestion | ShortAnswerQuestion
+
+
+class CustomQuizCounts(BaseModel):
+    single_choice: int = 0
+    multiple_choice: int = 0
+    logic: int = 0
+    short_answer: int = 0
+
+
 class QuizResult(BaseModel):
     knowledge_source: str = ""
     mode: QuizMode = QuizMode.NORMAL
-    questions: list[MultipleChoiceQuestion | ShortAnswerQuestion] = Field(
-        default_factory=list
-    )
+    custom_counts: CustomQuizCounts | None = None
+    questions: list[Question] = Field(default_factory=list)
 
 
 class UserAnswer(BaseModel):

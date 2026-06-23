@@ -7,27 +7,40 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from bioquestion.i18n import (
+    augment_system_prompt_for_language,
+    get_output_language_name,
+    translate_content,
+)
 from bioquestion.llm import LLMClient
-from bioquestion.prompts import GRADE_EZ_SHORT_ANSWER_SYSTEM, GRADE_SHORT_ANSWER_SYSTEM
+from bioquestion.prompts import GRADE_EASY_SHORT_ANSWER_SYSTEM, GRADE_SHORT_ANSWER_SYSTEM
 from bioquestion.schemas import (
     ChoiceGradingDetail,
     GradingReport,
+    LogicQuestion,
     MultipleChoiceQuestion,
     QuestionGradingResult,
     QuestionType,
     QuizMode,
     QuizResult,
     ShortAnswerQuestion,
+    SingleChoiceQuestion,
     UserAnswer,
     UserAnswerSheet,
 )
 from bioquestion.scoring import (
-    MC_MAX_SCORE,
-    MC_REPORT_MAX_SCORE,
-    REPORT_MAX_SCORE,
-    SA_MAX_SCORES,
+    LOGIC_MAX_SCORE,
+    MS_MAX_SCORE,
+    SA_MAX_SCORE,
+    SINGLE_MAX_SCORE,
+    custom_quiz_max_score,
+    explain_logic,
     explain_multiple_choice,
+    normal_quiz_max_score,
+    question_max_score,
+    score_logic_question,
     score_multiple_choice,
+    score_single_choice,
     short_answer_max_score,
 )
 
@@ -41,164 +54,212 @@ def _answer_map(sheet: UserAnswerSheet) -> dict[str, UserAnswer]:
     return {item.question_id: item for item in sheet.answers}
 
 
-def _grade_multiple_choice(
-    question: MultipleChoiceQuestion,
+def _maybe_translate(text: str, language: str) -> str:
+    if language == "en" or not text.strip():
+        return text
+    return translate_content(text, language)
+
+
+def _selected_list(user_answer: UserAnswer | None) -> list[str]:
+    if not user_answer or not isinstance(user_answer.answer, list):
+        return []
+    return user_answer.answer
+
+
+def _grade_scored_choice(
+    question: SingleChoiceQuestion | MultipleChoiceQuestion | LogicQuestion,
     user_answer: UserAnswer | None,
+    language: str,
 ) -> QuestionGradingResult:
-    selected = user_answer.answer if user_answer and isinstance(user_answer.answer, list) else []
-    score, detail, is_correct = score_multiple_choice(question, selected)
+    selected = _selected_list(user_answer)
+    if isinstance(question, SingleChoiceQuestion):
+        score, detail, is_correct = score_single_choice(question, selected)
+        max_score = SINGLE_MAX_SCORE
+        qtype = QuestionType.SINGLE_CHOICE
+        explanation = question.explanation if is_correct else (
+            f"Correct: {question.correct_answer}. "
+            f"Your answer: {', '.join(selected) or '(empty)'}."
+        )
+    elif isinstance(question, LogicQuestion):
+        score, detail, is_correct = score_logic_question(question, selected)
+        max_score = LOGIC_MAX_SCORE
+        qtype = QuestionType.LOGIC
+        explanation = explain_logic(detail, score)
+        if question.explanation:
+            explanation = f"{question.explanation} {explanation}"
+    else:
+        score, detail, is_correct = score_multiple_choice(question, selected)
+        max_score = MS_MAX_SCORE
+        qtype = QuestionType.MULTIPLE_CHOICE
+        explanation = explain_multiple_choice(question, detail, score)
+
     return QuestionGradingResult(
         question_id=question.id,
-        question_type=QuestionType.MULTIPLE_CHOICE,
+        question_type=qtype,
         score=round(score, 1),
-        max_score=MC_REPORT_MAX_SCORE,
+        max_score=max_score,
         is_correct=is_correct,
         choice_detail=detail,
-        explanation=explain_multiple_choice(question, detail, score),
+        explanation=_maybe_translate(explanation, language),
         references=question.references,
     )
 
 
-def _grade_ez_multiple_choice(
-    question: MultipleChoiceQuestion,
+def _grade_easy_choice(
+    question: SingleChoiceQuestion,
     user_answer: UserAnswer | None,
+    language: str,
 ) -> QuestionGradingResult:
-    selected = user_answer.answer if user_answer and isinstance(user_answer.answer, list) else []
-    user_set = set(selected)
-    correct_set = set(question.correct_answers)
-    is_correct = user_set == correct_set and len(correct_set) == 1
+    selected = _selected_list(user_answer)
+    correct = question.correct_answer
+    is_correct = set(selected) == {correct}
     detail = ChoiceGradingDetail(
         user_answers=sorted(selected),
-        correct_answers=sorted(question.correct_answers),
-        missed=sorted(correct_set - user_set),
-        extra=sorted(user_set - correct_set),
-        wrong=sorted(user_set - correct_set),
+        correct_answers=[correct],
+        missed=[] if is_correct else [correct],
+        wrong=sorted(set(selected) - {correct}),
         is_correct=is_correct,
     )
     if is_correct:
         explanation = question.explanation or "Correct."
     elif not selected:
         explanation = "No option selected."
-    elif len(selected) > 1:
-        explanation = (
-            f"EZ mode expects a single choice. You selected {', '.join(sorted(selected))}; "
-            f"the correct answer is {', '.join(sorted(correct_set))}."
-        )
     else:
         explanation = (
-            f"Incorrect. You selected {selected[0]}; "
-            f"the correct answer is {', '.join(sorted(correct_set))}."
+            f"Incorrect. You selected {selected[0]}; correct answer is {correct}."
         )
         if question.explanation:
             explanation = f"{question.explanation} {explanation}"
 
     return QuestionGradingResult(
         question_id=question.id,
-        question_type=QuestionType.MULTIPLE_CHOICE,
+        question_type=QuestionType.SINGLE_CHOICE,
         score=0.0,
         max_score=0.0,
         is_correct=is_correct,
         choice_detail=detail,
-        explanation=explanation,
+        explanation=_maybe_translate(explanation, language),
         references=question.references,
     )
 
 
-def _grade_ez_answers(
+def _grade_short_answers_llm(
+    sa_questions: list[ShortAnswerQuestion],
+    by_id: dict[str, UserAnswer],
+    llm: LLMClient,
+    language: str,
+    *,
+    easy: bool = False,
+) -> tuple[list[QuestionGradingResult], str]:
+    if not sa_questions:
+        return [], ""
+
+    payload = {
+        "output_language": get_output_language_name(language),
+        "short_answer_questions": [
+            {
+                **q.model_dump(mode="json"),
+                "max_score": 0 if easy else short_answer_max_score(i),
+            }
+            for i, q in enumerate(sa_questions)
+        ],
+        "user_answers": [
+            {
+                "question_id": q.id,
+                "answer": (by_id[q.id].answer if by_id.get(q.id) else ""),
+            }
+            for q in sa_questions
+        ],
+    }
+    system = GRADE_EASY_SHORT_ANSWER_SYSTEM if easy else GRADE_SHORT_ANSWER_SYSTEM
+    response = llm.complete_json(
+        augment_system_prompt_for_language(system, language),
+        f"{'Review' if easy else 'Grade'} in {payload['output_language']}:\n\n"
+        f"{json.dumps(payload, ensure_ascii=False, indent=2)}",
+        _ShortAnswerGradeResponse,
+    )
+
+    sa_by_id = {item.question_id: item for item in response.question_results}
+    results: list[QuestionGradingResult] = []
+    for index, question in enumerate(sa_questions):
+        sa_max = 0.0 if easy else short_answer_max_score(index)
+        item = sa_by_id.get(question.id)
+        if item is None:
+            results.append(
+                QuestionGradingResult(
+                    question_id=question.id,
+                    question_type=QuestionType.SHORT_ANSWER,
+                    score=0.0,
+                    max_score=sa_max,
+                    is_correct=False,
+                    explanation=_maybe_translate("No grading result returned.", language),
+                    references=question.references,
+                )
+            )
+            continue
+        item.max_score = sa_max
+        if not easy:
+            item.score = round(max(0.0, min(sa_max, item.score)), 1)
+        else:
+            item.score = 0.0
+        if not item.references:
+            item.references = question.references
+        results.append(item)
+    return results, response.summary
+
+
+def _compute_max_score(quiz: QuizResult) -> float:
+    if quiz.mode == QuizMode.EASY:
+        return 0.0
+    if quiz.mode == QuizMode.CUSTOM and quiz.custom_counts:
+        return custom_quiz_max_score(quiz.custom_counts)
+    if quiz.mode == QuizMode.NORMAL:
+        return normal_quiz_max_score()
+    return sum(question_max_score(q, quiz.mode) for q in quiz.questions)
+
+
+def _grade_easy(
     quiz: QuizResult,
     answers: UserAnswerSheet,
-    llm: LLMClient | None = None,
+    llm: LLMClient | None,
+    language: str,
 ) -> GradingReport:
     by_id = _answer_map(answers)
-    mc_results: list[QuestionGradingResult] = []
+    client = llm or LLMClient()
+    results: list[QuestionGradingResult] = []
     sa_questions: list[ShortAnswerQuestion] = []
 
     for question in quiz.questions:
-        if isinstance(question, MultipleChoiceQuestion):
-            mc_results.append(_grade_ez_multiple_choice(question, by_id.get(question.id)))
+        if isinstance(question, SingleChoiceQuestion):
+            results.append(_grade_easy_choice(question, by_id.get(question.id), language))
         elif isinstance(question, ShortAnswerQuestion):
             sa_questions.append(question)
 
-    sa_results: list[QuestionGradingResult] = []
-    sa_summary = ""
-    if sa_questions:
-        client = llm or LLMClient()
-        payload = {
-            "short_answer_questions": [q.model_dump(mode="json") for q in sa_questions],
-            "user_answers": [
-                {
-                    "question_id": q.id,
-                    "answer": (by_id[q.id].answer if by_id.get(q.id) else ""),
-                }
-                for q in sa_questions
-            ],
-        }
-        response = client.complete_json(
-            GRADE_EZ_SHORT_ANSWER_SYSTEM,
-            f"Review these short-answer responses (feedback only, no scoring):\n\n"
-            f"{json.dumps(payload, ensure_ascii=False, indent=2)}",
-            _ShortAnswerGradeResponse,
-        )
-        sa_by_id = {item.question_id: item for item in response.question_results}
-        for question in sa_questions:
-            item = sa_by_id.get(question.id)
-            if item is None:
-                sa_results.append(
-                    QuestionGradingResult(
-                        question_id=question.id,
-                        question_type=QuestionType.SHORT_ANSWER,
-                        score=0.0,
-                        max_score=0.0,
-                        is_correct=False,
-                        short_answer_detail=None,
-                        explanation="No feedback returned for this question.",
-                        references=question.references,
-                    )
-                )
-                continue
-            item.score = 0.0
-            item.max_score = 0.0
-            if item.references is None or not item.references:
-                item.references = question.references
-            sa_results.append(item)
-        sa_summary = response.summary
+    sa_results, sa_summary = _grade_short_answers_llm(
+        sa_questions, by_id, client, language, easy=True
+    )
 
-    question_results: list[QuestionGradingResult] = []
+    ordered: list[QuestionGradingResult] = []
     sa_iter = iter(sa_results)
     for question in quiz.questions:
-        if isinstance(question, MultipleChoiceQuestion):
-            question_results.append(
-                next(r for r in mc_results if r.question_id == question.id)
-            )
+        if isinstance(question, SingleChoiceQuestion):
+            ordered.append(next(r for r in results if r.question_id == question.id))
         else:
-            question_results.append(next(sa_iter))
+            ordered.append(next(sa_iter))
 
-    mc_correct = sum(
-        1
-        for r in question_results
-        if r.question_type == QuestionType.MULTIPLE_CHOICE and r.is_correct
+    mc_ok = sum(1 for r in ordered if r.is_correct and r.question_type != QuestionType.SHORT_ANSWER)
+    summary = _maybe_translate(
+        f"Easy mode (no scoring): {mc_ok} single-choice correct. {sa_summary}".strip(),
+        language,
     )
-    sa_complete = sum(
-        1
-        for r in question_results
-        if r.question_type == QuestionType.SHORT_ANSWER
-        and r.short_answer_detail
-        and r.short_answer_detail.logic_complete
-    )
-    summary = (
-        f"EZ mode (no scoring): {mc_correct}/{len(mc_results)} single-choice correct. "
-        f"Short-answer feedback provided for {len(sa_results)} question(s). "
-        f"{sa_summary}".strip()
-    )
-
     return GradingReport(
         total_score=0.0,
         max_score=0.0,
         percentage=0.0,
         summary=summary,
         scoring_enabled=False,
-        quiz_mode=QuizMode.EZ,
-        question_results=question_results,
+        quiz_mode=QuizMode.EASY,
+        question_results=ordered,
     )
 
 
@@ -206,115 +267,61 @@ def grade_answers(
     quiz: QuizResult,
     answers: UserAnswerSheet,
     llm: LLMClient | None = None,
+    language: str = "en",
 ) -> GradingReport:
-    if quiz.mode == QuizMode.EZ:
-        return _grade_ez_answers(quiz, answers, llm)
+    if quiz.mode == QuizMode.EASY:
+        return _grade_easy(quiz, answers, llm, language)
 
     by_id = _answer_map(answers)
-    mc_results: list[QuestionGradingResult] = []
+    client = llm or LLMClient()
+    choice_results: list[QuestionGradingResult] = []
     sa_questions: list[ShortAnswerQuestion] = []
 
     for question in quiz.questions:
-        if isinstance(question, MultipleChoiceQuestion):
-            mc_results.append(_grade_multiple_choice(question, by_id.get(question.id)))
+        if isinstance(question, (SingleChoiceQuestion, MultipleChoiceQuestion, LogicQuestion)):
+            choice_results.append(
+                _grade_scored_choice(question, by_id.get(question.id), language)
+            )
         elif isinstance(question, ShortAnswerQuestion):
             sa_questions.append(question)
 
-    sa_results: list[QuestionGradingResult] = []
-    sa_summary = ""
-    if sa_questions:
-        client = llm or LLMClient()
-        payload = {
-            "short_answer_questions": [
-                {
-                    **q.model_dump(mode="json"),
-                    "max_score": short_answer_max_score(i),
-                }
-                for i, q in enumerate(sa_questions)
-            ],
-            "user_answers": [
-                {
-                    "question_id": q.id,
-                    "answer": (by_id[q.id].answer if by_id.get(q.id) else ""),
-                }
-                for q in sa_questions
-            ],
-        }
-        response = client.complete_json(
-            GRADE_SHORT_ANSWER_SYSTEM,
-            f"Grade these short-answer responses:\n\n{json.dumps(payload, ensure_ascii=False, indent=2)}",
-            _ShortAnswerGradeResponse,
-        )
-        sa_by_id = {item.question_id: item for item in response.question_results}
-        for index, question in enumerate(sa_questions):
-            sa_max = short_answer_max_score(index)
-            item = sa_by_id.get(question.id)
-            if item is None:
-                sa_results.append(
-                    QuestionGradingResult(
-                        question_id=question.id,
-                        question_type=QuestionType.SHORT_ANSWER,
-                        score=0.0,
-                        max_score=sa_max,
-                        is_correct=False,
-                        short_answer_detail=None,
-                        explanation="No grading result returned for this question.",
-                        references=question.references,
-                    )
-                )
-                continue
-            item.max_score = sa_max
-            item.score = round(max(0.0, min(sa_max, item.score)), 1)
-            if item.references is None or not item.references:
-                item.references = question.references
-            sa_results.append(item)
-        sa_summary = response.summary
+    sa_results, sa_summary = _grade_short_answers_llm(
+        sa_questions, by_id, client, language, easy=False
+    )
 
-    question_results: list[QuestionGradingResult] = []
+    ordered: list[QuestionGradingResult] = []
     sa_iter = iter(sa_results)
     for question in quiz.questions:
-        if isinstance(question, MultipleChoiceQuestion):
-            question_results.append(
-                next(r for r in mc_results if r.question_id == question.id)
-            )
+        if isinstance(question, ShortAnswerQuestion):
+            ordered.append(next(sa_iter))
         else:
-            question_results.append(next(sa_iter))
+            ordered.append(next(r for r in choice_results if r.question_id == question.id))
 
-    mc_total = sum(
-        r.score
-        for r in question_results
-        if r.question_type == QuestionType.MULTIPLE_CHOICE
-    )
-    sa_total = sum(
-        r.score
-        for r in question_results
-        if r.question_type == QuestionType.SHORT_ANSWER
-    )
-    total_score = round(sum(r.score for r in question_results), 1)
-    percentage = round(total_score, 1)
+    total_score = round(sum(r.score for r in ordered), 1)
+    max_score = _compute_max_score(quiz)
+    percentage = round(total_score / max_score * 100, 1) if max_score else 0.0
 
-    mc_full = sum(
-        1
-        for r in question_results
-        if r.question_type == QuestionType.MULTIPLE_CHOICE and r.is_correct
-    )
-    mc_report_max = MC_MAX_SCORE * len(mc_results)
-    sa_report_max = sum(SA_MAX_SCORES[: len(sa_results)])
-    summary = (
-        f"Multiple-choice: {mc_total:.1f}/{mc_report_max:.1f} "
-        f"({mc_full}/{len(mc_results)} full credit). "
-        f"Short-answer: {sa_total:.1f}/{sa_report_max:.1f}. "
-        f"{sa_summary}".strip()
+    mc_total = sum(r.score for r in ordered if r.question_type == QuestionType.MULTIPLE_CHOICE)
+    logic_total = sum(r.score for r in ordered if r.question_type == QuestionType.LOGIC)
+    sc_total = sum(r.score for r in ordered if r.question_type == QuestionType.SINGLE_CHOICE)
+    sa_total = sum(r.score for r in ordered if r.question_type == QuestionType.SHORT_ANSWER)
+
+    summary = _maybe_translate(
+        (
+            f"Single-choice: {sc_total:.1f}; Multi-select: {mc_total:.1f}; "
+            f"Logic: {logic_total:.1f}; Short-answer: {sa_total:.1f}. {sa_summary}"
+        ).strip(),
+        language,
     )
 
     return GradingReport(
         total_score=total_score,
-        max_score=REPORT_MAX_SCORE,
+        max_score=max_score,
         percentage=percentage,
         summary=summary,
         scoring_enabled=True,
-        quiz_mode=QuizMode.NORMAL,
-        question_results=question_results,
+        quiz_mode=quiz.mode,
+        question_results=ordered,
     )
 
 
