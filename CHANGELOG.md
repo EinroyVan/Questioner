@@ -2,6 +2,23 @@
 
 All notable changes to BioQuestion are documented in this file.
 
+## [1.2.2] — 2026-06-22
+
+### Logic questions UI
+
+- Logic block (Q6–Q8) shows **one master section** explaining shared A–E options once.
+- Each sub-question displays only **α** and **β** descriptions; user picks **A–E** without repeated option text.
+
+### Scoring efficiency
+
+- Single-choice, multi-select, and logic questions are **script-graded only** (no LLM tokens).
+- LLM is invoked **only for short-answer** questions; skipped entirely when a quiz has none.
+- Quiz prompts require accurate `correct_answer` / `correct_answers` at generation time.
+
+### Profile
+
+- Nickname limit updated to **at most 12 full-width characters** (≤12).
+
 ## [1.2.1] — 2026-06-22
 
 ### Quiz modes & question types

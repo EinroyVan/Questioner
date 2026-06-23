@@ -29,7 +29,7 @@ UI_STRINGS: dict[str, str] = {
     "sidebar.profile": "Profile",
     "sidebar.display_name": "Display name (for stats)",
     "sidebar.display_name_ph": "Required for stats",
-    "sidebar.nickname_rule": "Nickname: required for scored modes; fewer than 12 full-width characters.",
+    "sidebar.nickname_rule": "Nickname: required for scored modes; at most 12 full-width characters.",
     "sidebar.workflow": "Workflow",
     "step.literature_input": "Literature Input",
     "step.knowledge_points": "Knowledge Points",
@@ -101,7 +101,12 @@ UI_STRINGS: dict[str, str] = {
         "Normal mode: 5 multi-select (10 pts each) + 3 logic (6 pts each) "
         "+ 2 short-answer (16 pts each). Total: 100 points."
     ),
-    "quiz.logic_select": "Select the logical relationship",
+    "quiz.logic_master_title": "Logic questions · shared options (A–E)",
+    "quiz.logic_master_intro": (
+        "The options below apply to every logic sub-question. "
+        "Each item gives two descriptions (α and β); choose one letter A–E."
+    ),
+    "quiz.logic_pick": "Choice (A–E)",
     "quiz.logic_option_a": "Both α and β are correct; α is the cause of β",
     "quiz.logic_option_b": "Both α and β are correct; α is the effect of β (β is the cause)",
     "quiz.logic_option_c": "α is correct, β is incorrect",

@@ -33,6 +33,7 @@ from bioquestion.schemas import (
     KnowledgeExtractionResult,
     LogicQuestion,
     MultipleChoiceQuestion,
+    QuestionType,
     QuizMode,
     QuizResult,
     ShortAnswerQuestion,
@@ -80,6 +81,14 @@ LOGIC_OPTION_UI_KEYS = {
 
 def _logic_option_labels() -> dict[str, str]:
     return {key: t(ui_key) for key, ui_key in LOGIC_OPTION_UI_KEYS.items()}
+
+
+def _render_logic_master_section() -> None:
+    st.markdown(f"### {t('quiz.logic_master_title')}")
+    st.caption(t("quiz.logic_master_intro"))
+    for key in ("A", "B", "C", "D", "E"):
+        st.markdown(f"**{key}.** {_logic_option_labels()[key]}")
+    st.divider()
 
 
 def t(key: str, **kwargs: object) -> str:
@@ -226,7 +235,7 @@ def _render_sidebar() -> None:
         t("sidebar.display_name"),
         value=st.session_state.get("user_display_name", ""),
         placeholder=t("sidebar.display_name_ph"),
-        max_chars=11,
+        max_chars=12,
     )
     st.sidebar.caption(t("sidebar.nickname_rule"))
     st.session_state.user_display_name = user_name.strip()
@@ -478,58 +487,60 @@ def _step_quiz() -> None:
         st.caption(t("quiz.normal_caption"))
 
     answers: list[UserAnswer] = []
+    logic_master_shown = False
 
     for q in quiz.questions:
-        st.markdown(f"### {q.id}")
-        if isinstance(q, SingleChoiceQuestion):
-            st.markdown(q.stem)
-            option_keys = sorted(q.options.keys())
-            selected_key = st.radio(
-                t("quiz.select_one"),
-                options=option_keys,
-                format_func=lambda key, opts=q.options: f"{key}. {opts[key]}",
-                key=f"sc_{q.id}",
-                label_visibility="collapsed",
-            )
-            answers.append(UserAnswer(question_id=q.id, answer=[selected_key]))
-        elif isinstance(q, MultipleChoiceQuestion):
-            st.markdown(q.stem)
-            option_keys = sorted(q.options.keys())
-            option_labels = [f"{k}. {q.options[k]}" for k in option_keys]
-            label_to_key = {f"{k}. {q.options[k]}": k for k in option_keys}
-            selected_labels = st.multiselect(
-                t("quiz.select_many"),
-                options=option_labels,
-                key=f"mc_{q.id}",
-                label_visibility="collapsed",
-            )
-            selected = sorted(label_to_key[label] for label in selected_labels)
-            answers.append(UserAnswer(question_id=q.id, answer=selected))
-        elif isinstance(q, LogicQuestion):
-            if q.stem:
-                st.markdown(q.stem)
+        if isinstance(q, LogicQuestion):
+            if not logic_master_shown:
+                _render_logic_master_section()
+                logic_master_shown = True
+            st.markdown(f"### {q.id}")
             st.markdown(f"**α:** {q.description_alpha}")
             st.markdown(f"**β:** {q.description_beta}")
-            logic_keys = sorted(_logic_option_labels().keys())
-            logic_labels = _logic_option_labels()
             selected_key = st.radio(
-                t("quiz.logic_select"),
-                options=logic_keys,
-                format_func=lambda key, labels=logic_labels: f"{key}. {labels[key]}",
+                t("quiz.logic_pick"),
+                options=["A", "B", "C", "D", "E"],
+                horizontal=True,
                 key=f"lg_{q.id}",
                 label_visibility="collapsed",
             )
             answers.append(UserAnswer(question_id=q.id, answer=[selected_key]))
-        elif isinstance(q, ShortAnswerQuestion):
-            st.markdown(q.stem)
-            text = st.text_area(
-                t("quiz.your_answer"),
-                key=f"sa_{q.id}",
-                height=120,
-                label_visibility="collapsed",
-                placeholder=t("quiz.answer_ph"),
-            )
-            answers.append(UserAnswer(question_id=q.id, answer=text))
+        else:
+            st.markdown(f"### {q.id}")
+            if isinstance(q, SingleChoiceQuestion):
+                st.markdown(q.stem)
+                option_keys = sorted(q.options.keys())
+                selected_key = st.radio(
+                    t("quiz.select_one"),
+                    options=option_keys,
+                    format_func=lambda key, opts=q.options: f"{key}. {opts[key]}",
+                    key=f"sc_{q.id}",
+                    label_visibility="collapsed",
+                )
+                answers.append(UserAnswer(question_id=q.id, answer=[selected_key]))
+            elif isinstance(q, MultipleChoiceQuestion):
+                st.markdown(q.stem)
+                option_keys = sorted(q.options.keys())
+                option_labels = [f"{k}. {q.options[k]}" for k in option_keys]
+                label_to_key = {f"{k}. {q.options[k]}": k for k in option_keys}
+                selected_labels = st.multiselect(
+                    t("quiz.select_many"),
+                    options=option_labels,
+                    key=f"mc_{q.id}",
+                    label_visibility="collapsed",
+                )
+                selected = sorted(label_to_key[label] for label in selected_labels)
+                answers.append(UserAnswer(question_id=q.id, answer=selected))
+            elif isinstance(q, ShortAnswerQuestion):
+                st.markdown(q.stem)
+                text = st.text_area(
+                    t("quiz.your_answer"),
+                    key=f"sa_{q.id}",
+                    height=120,
+                    label_visibility="collapsed",
+                    placeholder=t("quiz.answer_ph"),
+                )
+                answers.append(UserAnswer(question_id=q.id, answer=text))
 
         st.divider()
 
@@ -698,6 +709,9 @@ def _step_grading() -> None:
 
     st.subheader(t("grading.details"))
     quiz_map = {q.id: q for q in quiz.questions} if quiz else {}
+    has_logic = any(item.question_type == QuestionType.LOGIC for item in report.question_results)
+    if has_logic:
+        _render_logic_master_section()
 
     for item in report.question_results:
         verdict = t("grading.verdict_ok") if item.is_correct else t("grading.verdict_bad")
@@ -716,8 +730,6 @@ def _step_grading() -> None:
             q = quiz_map.get(item.question_id)
             if q:
                 if isinstance(q, LogicQuestion):
-                    if q.stem:
-                        st.markdown(t("grading.question", stem=q.stem))
                     st.markdown(f"**α:** {q.description_alpha}")
                     st.markdown(f"**β:** {q.description_beta}")
                 else:

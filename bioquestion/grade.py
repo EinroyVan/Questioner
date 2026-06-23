@@ -71,6 +71,7 @@ def _grade_scored_choice(
     user_answer: UserAnswer | None,
     language: str,
 ) -> QuestionGradingResult:
+    """Grade choice questions deterministically — no LLM tokens."""
     selected = _selected_list(user_answer)
     if isinstance(question, SingleChoiceQuestion):
         score, detail, is_correct = score_single_choice(question, selected)
@@ -225,7 +226,6 @@ def _grade_easy(
     language: str,
 ) -> GradingReport:
     by_id = _answer_map(answers)
-    client = llm or LLMClient()
     results: list[QuestionGradingResult] = []
     sa_questions: list[ShortAnswerQuestion] = []
 
@@ -235,9 +235,13 @@ def _grade_easy(
         elif isinstance(question, ShortAnswerQuestion):
             sa_questions.append(question)
 
-    sa_results, sa_summary = _grade_short_answers_llm(
-        sa_questions, by_id, client, language, easy=True
-    )
+    if sa_questions:
+        client = llm or LLMClient()
+        sa_results, sa_summary = _grade_short_answers_llm(
+            sa_questions, by_id, client, language, easy=True
+        )
+    else:
+        sa_results, sa_summary = [], ""
 
     ordered: list[QuestionGradingResult] = []
     sa_iter = iter(sa_results)
@@ -273,7 +277,6 @@ def grade_answers(
         return _grade_easy(quiz, answers, llm, language)
 
     by_id = _answer_map(answers)
-    client = llm or LLMClient()
     choice_results: list[QuestionGradingResult] = []
     sa_questions: list[ShortAnswerQuestion] = []
 
@@ -285,9 +288,13 @@ def grade_answers(
         elif isinstance(question, ShortAnswerQuestion):
             sa_questions.append(question)
 
-    sa_results, sa_summary = _grade_short_answers_llm(
-        sa_questions, by_id, client, language, easy=False
-    )
+    if sa_questions:
+        client = llm or LLMClient()
+        sa_results, sa_summary = _grade_short_answers_llm(
+            sa_questions, by_id, client, language, easy=False
+        )
+    else:
+        sa_results, sa_summary = [], ""
 
     ordered: list[QuestionGradingResult] = []
     sa_iter = iter(sa_results)

@@ -3,14 +3,17 @@
 from bioquestion.schemas import LOGIC_OPTION_KEYS
 
 _LOGIC_OPTIONS_DOC = """
-Logic question master options (fixed for every logic item):
+Logic block (e.g. Q6–Q8): ONE shared master option set for all logic sub-questions.
+Master options (fixed — do NOT repeat in each sub-question stem):
 A. Both α and β are correct, and α is the cause of β
 B. Both α and β are correct, and α is the effect of β (β is the cause)
 C. α is correct, β is incorrect
 D. β is correct, α is incorrect
 E. Both α and β are incorrect
-Each logic question must set description_alpha and description_beta in the stem context.
-correct_answer is exactly one letter A–E referring to the master options above.
+
+Each logic sub-question provides ONLY description_alpha and description_beta (two statements).
+Leave stem empty. Do NOT restate options A–E in the stem.
+Set correct_answer to exactly one letter A–E for automatic script grading (no LLM grading for logic).
 """
 
 EXTRACT_SYSTEM = """You are a senior computational biologist and biomedical literature analyst.
@@ -48,13 +51,14 @@ QUIZ_NORMAL_SYSTEM = f"""You are a rigorous medical educator.
 Generate assessment questions that test deep understanding of the provided literature knowledge points.
 
 Rules:
-1. Exactly 5 multiple-select questions (Q1–Q5) + 3 logic questions (Q6–Q8) + 2 short-answer questions (Q9–Q10).
-2. Multiple-select: exactly 5 options A–E; one or more correct answers; highly plausible distractors.
-3. Logic questions: provide description_alpha and description_beta; use the fixed master options below.
+1. Exactly 5 multiple-select questions (Q1–Q5) + 3 logic sub-questions (Q6–Q8) + 2 short-answer questions (Q9–Q10).
+2. Multiple-select: exactly 5 options A–E; one or more correct answers in correct_answers; highly plausible distractors.
+3. Logic block Q6–Q8: shared master options (see below); each item only description_alpha + description_beta; correct_answer A–E.
 {_LOGIC_OPTIONS_DOC}
-4. Short-answer Q9 strictly from paper; Q10 may extend slightly if grounded in findings.
-5. Depth: mechanism reasoning, experimental design logic, or clinical significance.
-6. Strict paper fidelity for facts; do not invent unsupported claims.
+4. Single-choice / multiple-choice / logic answers are graded by script — you MUST set correct_answer or correct_answers accurately.
+5. Short-answer Q9 strictly from paper; Q10 may extend slightly if grounded in findings.
+6. Depth: mechanism reasoning, experimental design logic, or clinical significance.
+7. Strict paper fidelity for facts; do not invent unsupported claims.
 
 Output JSON:
 {{
@@ -73,7 +77,7 @@ Output JSON:
       "type": "logic",
       "description_alpha": "statement α",
       "description_beta": "statement β",
-      "stem": "Given: α = ...; β = ...",
+      "stem": "",
       "correct_answer": "A",
       "explanation": "...",
       "references": [{{"knowledge_point_id": "KP-2", "source_quote": "..."}}]
@@ -96,7 +100,7 @@ Generate a lighter Easy-mode quiz for quick comprehension checks.
 
 Rules:
 1. Exactly 4 single-choice questions (Q1–Q4) + 1 short-answer question (Q5).
-2. Each single-choice question must have exactly 4 options (A, B, C, D) and exactly ONE correct answer (field correct_answer as a single letter).
+2. Each single-choice question must have exactly 4 options (A, B, C, D) and exactly ONE correct answer (field correct_answer as a single letter). Answers are script-graded — set correct_answer accurately.
 3. Use type "single_choice" for Q1–Q4.
 4. Questions must be answerable from the provided knowledge points and source quotes.
 5. Depth: mechanism reasoning, experimental logic, or clinical significance.
@@ -132,9 +136,10 @@ def build_custom_quiz_system(counts: dict[str, int]) -> str:
 Generate a custom quiz with exactly:
 - {sc} single-choice question(s) (type single_choice, 4 options A–D, field correct_answer)
 - {ms} multiple-select question(s) (type multiple_choice, 5 options A–E, field correct_answers)
-- {lg} logic question(s) (type logic, fields description_alpha, description_beta, correct_answer)
+- {lg} logic sub-question(s) (type logic: description_alpha, description_beta, correct_answer A–E; empty stem)
 - {sa} short-answer question(s) (type short_answer)
 
+Single-choice, multiple-select, and logic items are script-graded — set correct_answer / correct_answers accurately.
 {_LOGIC_OPTIONS_DOC}
 
 Number questions sequentially Q1, Q2, ... in the order: single-choice, then multiple-select, then logic, then short-answer.

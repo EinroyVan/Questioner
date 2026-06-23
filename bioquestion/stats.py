@@ -19,7 +19,7 @@ TREND_DAYS = 10
 MIN_SUBMISSIONS_PER_BUCKET = 3
 LEADERBOARD_API_HOST = "127.0.0.1"
 LEADERBOARD_API_PORT = 8765
-NICKNAME_MAX_FULLWIDTH = 11  # strictly less than 12 full-width characters
+NICKNAME_MAX_FULLWIDTH = 12  # at most 12 full-width characters
 
 
 class ScoreRecord(BaseModel):
@@ -46,8 +46,8 @@ def validate_nickname(nickname: str) -> tuple[bool, str]:
     name = nickname.strip()
     if not name:
         return False, "Nickname is required."
-    if fullwidth_char_count(name) >= 12:
-        return False, "Nickname must be fewer than 12 full-width characters."
+    if fullwidth_char_count(name) > NICKNAME_MAX_FULLWIDTH:
+        return False, f"Nickname must be at most {NICKNAME_MAX_FULLWIDTH} full-width characters."
     if re.search(r"[\x00-\x1f]", name):
         return False, "Nickname contains invalid characters."
     return True, ""

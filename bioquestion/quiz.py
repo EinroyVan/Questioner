@@ -13,6 +13,7 @@ from bioquestion.prompts import QUIZ_EASY_SYSTEM, QUIZ_NORMAL_SYSTEM, build_cust
 from bioquestion.schemas import (
     CustomQuizCounts,
     KnowledgeExtractionResult,
+    LOGIC_OPTION_KEYS,
     LogicQuestion,
     MultipleChoiceQuestion,
     QuestionType,
@@ -102,7 +103,7 @@ def _validate_quiz_questions(
             raise ValueError(f"{q.id} invalid correct_answers: {invalid}.")
 
     for q in lg:
-        if q.correct_answer not in MS_OPTION_KEYS:
+        if q.correct_answer not in LOGIC_OPTION_KEYS:
             raise ValueError(f"{q.id} invalid logic correct_answer {q.correct_answer}.")
 
 

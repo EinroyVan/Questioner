@@ -12,7 +12,7 @@ from bioquestion import PROJECT_ROOT
 from bioquestion.ui_strings import UI_STRINGS
 
 CACHE_DIR = PROJECT_ROOT / ".cache" / "i18n"
-I18N_CACHE_VERSION = 3
+I18N_CACHE_VERSION = 4
 
 LANGUAGES: dict[str, str] = {
     "en": "English",
