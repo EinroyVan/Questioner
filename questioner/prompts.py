@@ -83,11 +83,11 @@ Generate assessment questions from the provided structured literature analysis
 (introduction, methods, results, discussion).
 
 Rules:
-1. Exactly 5 multiple-select questions (Q1–Q5) + 3 logic sub-questions (Q6–Q8) + 2 short-answer questions (Q9–Q10).
-2. Multiple-select: exactly 5 options A–E; one or more correct answers in correct_answers; highly plausible distractors.
+1. Exactly 5 variable-selection questions (Q1–Q5) + 3 logic sub-questions (Q6–Q8) + 2 short-answer questions (Q9–Q10).
+2. Variable-selection (不定项选择): exactly 5 options A–E; correct_answers must list 1 to 5 letters (at least one correct, not all five every time); highly plausible distractors.
 3. Logic block Q6–Q8: shared master options (see below); each item only description_alpha + description_beta; correct_answer A–G.
 {_LOGIC_OPTIONS_DOC}
-4. Single-choice / multiple-choice / logic answers are graded by script — you MUST set correct_answer or correct_answers accurately.
+4. Single-choice / variable-selection / logic answers are graded by script — you MUST set correct_answer or correct_answers accurately.
 5. Short-answer Q9 strictly from results/discussion; Q10 may extend slightly if grounded in the analysis.
 6. Depth: mechanism reasoning, experimental design logic, or scientific significance.
 7. Strict fidelity to the literature analysis; do not invent unsupported claims.
@@ -169,15 +169,15 @@ def build_custom_quiz_system(counts: dict[str, int]) -> str:
     return f"""You are a rigorous natural-science educator.
 Generate a custom quiz from the structured literature analysis with exactly:
 - {sc} single-choice question(s) (type single_choice, 4 options A–D, field correct_answer)
-- {ms} multiple-select question(s) (type multiple_choice, 5 options A–E, field correct_answers)
+- {ms} variable-selection question(s) (type multiple_choice, 5 options A–E, correct_answers with 1–5 letters)
 - {lg} logic sub-question(s) (type logic: description_alpha, description_beta, correct_answer A–G; empty stem)
 - {sa} short-answer question(s) (type short_answer)
 
-Single-choice, multiple-select, and logic items are script-graded — set correct_answer / correct_answers accurately.
+Single-choice, variable-selection, and logic items are script-graded — set correct_answer / correct_answers accurately.
 {_LOGIC_OPTIONS_DOC}
 {_SECTION_REF_DOC}
 
-Number questions sequentially Q1, Q2, ... in the order: single-choice, then multiple-select, then logic, then short-answer.
+Number questions sequentially Q1, Q2, ... in the order: single-choice, then variable-selection, then logic, then short-answer.
 Strict fidelity to the literature analysis; valid JSON only."""
 
 

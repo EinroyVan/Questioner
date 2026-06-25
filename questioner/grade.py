@@ -12,7 +12,7 @@ from questioner.i18n import (
     get_output_language_name,
     translate_content,
 )
-from questioner.literature_format import literature_analysis_is_substantive
+from questioner.extract import literature_analysis_is_substantive
 from questioner.llm import LLMClient
 from questioner.prompts import (
     GRADE_CHOICE_EXPLANATIONS_SYSTEM,

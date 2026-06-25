@@ -10,7 +10,7 @@ Works across physics, chemistry, biology, earth science, astronomy, materials sc
 
 - Upload **TXT** or **PDF** (with OCR for scanned pages)
 - Extract entities, mechanisms, and findings with source quotes
-- **Normal mode**: 5 multi-select (10 pts) + 3 logic (6 pts, all-or-nothing) + 2 short-answer (16 pts); total 100
+- **Normal mode**: 5 variable-selection questions (5 options A–E, 1–5 correct, 10 pts each) + 3 logic (6 pts, all-or-nothing) + 2 short-answer (16 pts); total 100
 - **Easy mode**: 4 single-choice (A–D) + 1 short-answer; feedback only
 - **Custom mode**: configure your own question mix
 - Multi-provider LLM: **Google Gemini**, **OpenAI**, **Anthropic Claude**, **OpenAI-compatible**
@@ -73,8 +73,8 @@ Questioner/
 
 ## Scoring notes
 
-- **Single-choice / multi-select / logic**: script-graded from generated answer keys (no LLM tokens).
-- **Logic questions**: independent scoring — correct = 6 pts, wrong = 0 pts (not subject to multi-select partial-credit rules).
+- **Single-choice / variable-selection / logic**: script-graded from generated answer keys (no LLM tokens).
+- **Logic questions**: independent scoring — correct = 6 pts, wrong = 0 pts (not subject to variable-selection partial-credit rules).
 - **Short-answer**: LLM grading with partial credit.
 
 ## Security

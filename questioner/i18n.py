@@ -12,7 +12,28 @@ from questioner import PROJECT_ROOT
 from questioner.ui_strings import UI_STRINGS
 
 CACHE_DIR = PROJECT_ROOT / ".cache" / "i18n"
-I18N_CACHE_VERSION = 9
+I18N_CACHE_VERSION = 10
+
+LOCALE_OVERRIDES: dict[str, dict[str, str]] = {
+    "zh-CN": {
+        "knowledge.mode_hint": (
+            "**普通模式** — 5 道不定项选择题（每题 5 个选项 A–E，正确答案 1–5 个，每题 10 分）"
+            "+ 3 道逻辑题（每题 6 分）+ 2 道简答题（每题 16 分）。  "
+            "**简易模式** — 4 道单选题（四选一）+ 1 道简答题，仅反馈不计分。  "
+            "**定制模式** — 自行配置各题型数量。"
+        ),
+        "knowledge.custom_multi": "不定项选择题（5 选项，1–5 个正确答案）",
+        "knowledge.generating_normal": "正在生成普通模式测验（不定项选择题 + 逻辑题 + 简答题）…",
+        "quiz.custom_caption": (
+            "定制模式：各题型按普通模式相同规则计分（含不定项选择题，每题 1–5 个正确答案）。"
+        ),
+        "quiz.normal_caption": (
+            "普通模式：5 道不定项选择题（每题 5 选项 A–E，正确答案 1–5 个，每题 10 分）"
+            "+ 3 道逻辑题（每题 6 分）+ 2 道简答题（每题 16 分）。总分 100 分。"
+        ),
+        "quiz.select_many": "不定项选择（可选 1–5 项，A–E）",
+    },
+}
 
 LANGUAGES: dict[str, str] = {
     "en": "English",
@@ -146,6 +167,8 @@ def build_translation_map(lang: str) -> dict[str, str]:
 
     result = dict(UI_STRINGS)
     result.update(cached)
+    if lang in LOCALE_OVERRIDES:
+        result.update(LOCALE_OVERRIDES[lang])
     return result
 
 

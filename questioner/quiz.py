@@ -8,7 +8,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from questioner.i18n import augment_system_prompt_for_language, get_output_language_name
-from questioner.literature_format import literature_analysis_is_substantive
+from questioner.extract import literature_analysis_is_substantive
 from questioner.llm import LLMClient
 from questioner.prompts import QUIZ_EASY_SYSTEM, QUIZ_NORMAL_SYSTEM, build_custom_quiz_system
 from questioner.schemas import (
@@ -99,6 +99,11 @@ def _validate_quiz_questions(
     for q in ms:
         if set(q.options.keys()) != set(MS_OPTION_KEYS):
             raise ValueError(f"{q.id} must have options A–E.")
+        if not (1 <= len(q.correct_answers) <= 5):
+            raise ValueError(
+                f"{q.id} variable-selection must have 1–5 correct answers; "
+                f"got {len(q.correct_answers)}."
+            )
         invalid = [k for k in q.correct_answers if k not in MS_OPTION_KEYS]
         if invalid:
             raise ValueError(f"{q.id} invalid correct_answers: {invalid}.")

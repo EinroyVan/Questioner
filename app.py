@@ -5,9 +5,19 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+# Must run before any `questioner.*` import (avoids stale site-packages shadowing).
 _PROJECT_ROOT = Path(__file__).resolve().parent
-if str(_PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT))
+_root_text = str(_PROJECT_ROOT)
+if _root_text in sys.path:
+    sys.path.remove(_root_text)
+sys.path.insert(0, _root_text)
+_existing_questioner = sys.modules.get("questioner")
+if _existing_questioner is not None:
+    _pkg_file = getattr(_existing_questioner, "__file__", "") or ""
+    if _pkg_file and Path(_pkg_file).resolve().parent.parent != _PROJECT_ROOT:
+        for _name in list(sys.modules):
+            if _name == "questioner" or _name.startswith("questioner."):
+                del sys.modules[_name]
 
 import json
 import os
@@ -19,27 +29,26 @@ _ENV_FILE = _PROJECT_ROOT / ".env"
 load_dotenv(_ENV_FILE, override=False)
 
 from questioner import __version__
-from questioner.extract import extract_knowledge, save_knowledge
+from questioner.extract import extract_knowledge, render_literature_analysis_markdown, save_knowledge
 from questioner.grade import grade_answers, save_report
-from questioner.literature_format import render_literature_analysis_markdown
-from questioner.metadata_format import metadata_is_present, render_metadata_markdown
+from questioner.i18n import LANGUAGES, apply_placeholders, build_translation_map
+from questioner.report_note import (
+    build_study_report_bundle,
+    metadata_is_present,
+    render_metadata_markdown,
+)
 from questioner.llm import LLMClient
 from questioner.pdf_reader import load_uploaded_document
 from questioner.providers import LLMProvider, PROVIDER_SPECS, provider_is_configured
 from questioner.quiz import generate_quiz, save_quiz
-from questioner.report_note import build_study_report_bundle
 from questioner.schemas import (
     CustomQuizCounts,
     GradingReport,
     KnowledgeExtractionResult,
     LOGIC_OPTION_KEYS,
-    LogicQuestion,
-    MultipleChoiceQuestion,
     QuestionType,
     QuizMode,
     QuizResult,
-    ShortAnswerQuestion,
-    SingleChoiceQuestion,
     UserAnswer,
     UserAnswerSheet,
 )
@@ -78,7 +87,7 @@ LOGIC_OPTION_UI_KEYS = {
 
 
 def _logic_question_range(quiz: QuizResult) -> str:
-    logic_ids = [q.id for q in quiz.questions if isinstance(q, LogicQuestion)]
+    logic_ids = [q.id for q in quiz.questions if q.type == QuestionType.LOGIC]
     if not logic_ids:
         return ""
     if len(logic_ids) == 1:
@@ -160,6 +169,31 @@ def t(key: str, **kwargs: object) -> str:
     if kwargs:
         return apply_placeholders(text, **kwargs)
     return text
+
+
+def _rehydrate_model(value, model_cls):
+    if value is None:
+        return None
+    if isinstance(value, model_cls):
+        return value
+    data = value.model_dump(mode="json") if hasattr(value, "model_dump") else value
+    return model_cls.model_validate(data)
+
+
+def _rehydrate_session_models() -> None:
+    """Re-bind Pydantic models after a questioner module reload in the same process."""
+    if "knowledge" in st.session_state:
+        st.session_state.knowledge = _rehydrate_model(
+            st.session_state.knowledge, KnowledgeExtractionResult
+        )
+    if "quiz" in st.session_state:
+        st.session_state.quiz = _rehydrate_model(st.session_state.quiz, QuizResult)
+    if "report" in st.session_state:
+        st.session_state.report = _rehydrate_model(st.session_state.report, GradingReport)
+    if "answer_sheet" in st.session_state:
+        st.session_state.answer_sheet = _rehydrate_model(
+            st.session_state.answer_sheet, UserAnswerSheet
+        )
 
 
 def _init_session() -> None:
@@ -552,7 +586,7 @@ def _step_quiz() -> None:
     logic_master_shown = False
 
     for q in quiz.questions:
-        if isinstance(q, LogicQuestion):
+        if q.type == QuestionType.LOGIC:
             if not logic_master_shown:
                 _render_logic_shared_options(quiz)
                 logic_master_shown = True
@@ -569,7 +603,7 @@ def _step_quiz() -> None:
             answers.append(UserAnswer(question_id=q.id, answer=[selected_key]))
         else:
             st.markdown(f"### {q.id}")
-            if isinstance(q, SingleChoiceQuestion):
+            if q.type == QuestionType.SINGLE_CHOICE:
                 st.markdown(q.stem)
                 option_keys = sorted(q.options.keys())
                 selected_key = st.radio(
@@ -580,7 +614,7 @@ def _step_quiz() -> None:
                     label_visibility="collapsed",
                 )
                 answers.append(UserAnswer(question_id=q.id, answer=[selected_key]))
-            elif isinstance(q, MultipleChoiceQuestion):
+            elif q.type == QuestionType.MULTIPLE_CHOICE:
                 st.markdown(q.stem)
                 option_keys = sorted(q.options.keys())
                 option_labels = [f"{k}. {q.options[k]}" for k in option_keys]
@@ -593,7 +627,7 @@ def _step_quiz() -> None:
                 )
                 selected = sorted(label_to_key[label] for label in selected_labels)
                 answers.append(UserAnswer(question_id=q.id, answer=selected))
-            elif isinstance(q, ShortAnswerQuestion):
+            elif q.type == QuestionType.SHORT_ANSWER:
                 st.markdown(q.stem)
                 text = st.text_area(
                     t("quiz.your_answer"),
@@ -794,7 +828,7 @@ def _step_grading() -> None:
         with st.expander(f"{item.question_id}  {verdict}  {title_suffix}".strip(), expanded=False):
             q = quiz_map.get(item.question_id)
             if q:
-                if isinstance(q, LogicQuestion):
+                if q.type == QuestionType.LOGIC:
                     st.markdown(f"**α:** {q.description_alpha}")
                     st.markdown(f"**β:** {q.description_beta}")
                 else:
@@ -819,9 +853,12 @@ def _step_grading() -> None:
                         if not text:
                             continue
                         label = ""
-                        if q and isinstance(q, (SingleChoiceQuestion, MultipleChoiceQuestion)):
+                        if q and q.type in (
+                            QuestionType.SINGLE_CHOICE,
+                            QuestionType.MULTIPLE_CHOICE,
+                        ):
                             label = q.options.get(key, "")
-                        elif q and isinstance(q, LogicQuestion):
+                        elif q and q.type == QuestionType.LOGIC:
                             label = _logic_option_labels().get(key, "")
                         line = f"**{key}.** {label} — {text}" if label else f"**{key}.** {text}"
                         if key in d.wrong:
@@ -873,7 +910,7 @@ def _step_grading() -> None:
                     st.error(t("grading.concept_confusion_penalty"))
                 if d.feedback:
                     st.info(d.feedback)
-                if isinstance(q, ShortAnswerQuestion):
+                if q and q.type == QuestionType.SHORT_ANSWER:
                     with st.popover(t("grading.view_model")):
                         st.write(q.standard_answer)
                         st.caption(t("grading.grading_kw", items=", ".join(q.grading_keywords)))
@@ -956,6 +993,7 @@ def _step_grading() -> None:
 
 def main() -> None:
     _init_session()
+    _rehydrate_session_models()
     st.set_page_config(
         page_title=UI_STRINGS["app.page_title"],
         page_icon="🧬",

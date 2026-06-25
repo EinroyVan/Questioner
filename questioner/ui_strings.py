@@ -94,7 +94,8 @@ UI_STRINGS: dict[str, str] = {
     "metadata.doi": "DOI",
     "metadata.field_tags": "Tags",
     "knowledge.mode_hint": (
-        "**Normal** — 5 multi-select (10 pts) + 3 logic (6 pts) + 2 short-answer (16 pts).  "
+        "**Normal** — 5 variable-selection questions (5 options A–E, 1–5 correct, 10 pts each) + "
+        "3 logic (6 pts) + 2 short-answer (16 pts).  "
         "**Easy** — 4 single-choice (4 options) + 1 short-answer, feedback only.  "
         "**Custom** — choose your own mix."
     ),
@@ -103,13 +104,15 @@ UI_STRINGS: dict[str, str] = {
     "knowledge.generate_custom": "Custom Quiz",
     "knowledge.custom_title": "Custom quiz composition",
     "knowledge.custom_single": "Single-choice",
-    "knowledge.custom_multi": "Multi-select",
+    "knowledge.custom_multi": "Variable-selection (5 options, 1–5 correct)",
     "knowledge.custom_logic": "Logic",
     "knowledge.custom_sa": "Short-answer",
     "knowledge.custom_confirm": "Generate Custom Quiz",
     "knowledge.custom_empty": "Select at least one question.",
     "knowledge.generating_easy": "Generating 4 single-choice + 1 short-answer (Easy mode)…",
-    "knowledge.generating_normal": "Generating Normal quiz (multi-select + logic + short-answer)…",
+    "knowledge.generating_normal": (
+        "Generating Normal quiz (variable-selection + logic + short-answer)…"
+    ),
     "knowledge.generating_custom": "Generating custom quiz…",
     "knowledge.quiz_failed": "Quiz generation failed: [[error]]",
     "quiz.header": "Step 3 · [[step]]",
@@ -117,10 +120,13 @@ UI_STRINGS: dict[str, str] = {
     "quiz.easy_caption": (
         "Easy mode: 4 single-choice (A–D, pick 1) + 1 short-answer. Feedback only — no scoring."
     ),
-    "quiz.custom_caption": "Custom mode: scored using the same per-type rules as Normal.",
+    "quiz.custom_caption": (
+        "Custom mode: scored using the same per-type rules as Normal "
+        "(including variable-selection with 1–5 correct answers per question)."
+    ),
     "quiz.normal_caption": (
-        "Normal mode: 5 multi-select (10 pts each) + 3 logic (6 pts each) "
-        "+ 2 short-answer (16 pts each). Total: 100 points."
+        "Normal mode: 5 variable-selection questions (5 options A–E, pick 1–5 correct, 10 pts each) + "
+        "3 logic (6 pts each) + 2 short-answer (16 pts each). Total: 100 points."
     ),
     "quiz.logic_shared_options": "Shared options",
     "quiz.logic_pick": " ",
@@ -132,7 +138,7 @@ UI_STRINGS: dict[str, str] = {
     "quiz.logic_option_f": "Both α and β are correct, but no causal relationship between them",
     "quiz.logic_option_g": "α and β are mutually exclusive (one correct implies the other is wrong)",
     "quiz.select_one": "Select one answer",
-    "quiz.select_many": "Select answer(s)",
+    "quiz.select_many": "Variable-selection: pick 1–5 of A–E",
     "quiz.your_answer": "Your answer",
     "quiz.answer_ph": "Address mechanism, experimental logic, or scientific significance…",
     "quiz.submit": "Submit & Grade",

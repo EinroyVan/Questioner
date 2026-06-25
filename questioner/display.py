@@ -6,7 +6,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from questioner.literature_format import render_literature_analysis_markdown
+from questioner.extract import render_literature_analysis_markdown
 from questioner.schemas import (
     GradingReport,
     KnowledgeExtractionResult,
@@ -34,7 +34,7 @@ def print_quiz(quiz: QuizResult) -> None:
             for key in sorted(q.options):
                 lines.append(f"  {key}. {q.options[key]}")
             lines.append(f"\n[dim]Answer key: {', '.join(sorted(q.correct_answers))}[/dim]")
-            console.print(Panel("\n".join(lines), title=f"[{q.id}] Multi-select"))
+            console.print(Panel("\n".join(lines), title=f"[{q.id}] Variable-selection"))
         elif isinstance(q, ShortAnswerQuestion):
             console.print(
                 Panel(

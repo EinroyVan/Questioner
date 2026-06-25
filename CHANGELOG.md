@@ -2,6 +2,21 @@
 
 All notable changes to Questioner are documented in this file.
 
+## [1.3.4] — 2026-06-25
+
+### Stability & imports
+
+- Restore missing `app.py` imports (`LLMProvider`, `LANGUAGES`, quiz/LLM helpers).
+- Fix quiz UI showing only question IDs after Streamlit reruns (session model rehydration; smarter module reload).
+- Merge `literature_format.py` and `metadata_format.py` into `extract.py` / `report_note.py` to avoid import errors.
+- `start.bat` runs `pip install -e .` before launching Streamlit.
+
+### Question design (variable-selection)
+
+- Rename UI copy from “multi-select” to **variable-selection / 不定项选择题** (5 options A–E, 1–5 correct answers).
+- Add Chinese locale overrides so labels are not mistranslated as 多选题.
+- Prompts and validation require 1–5 correct answers per variable-selection question.
+
 ## [1.3.3] — 2026-06-23
 
 ### Literature analysis (IMRaD)
