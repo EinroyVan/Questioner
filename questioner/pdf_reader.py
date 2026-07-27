@@ -51,15 +51,20 @@ def _get_ocr_engine():
 
 
 def _ocr_page(page: fitz.Page) -> str:
-    matrix = fitz.Matrix(OCR_ZOOM, OCR_ZOOM)
-    pixmap = page.get_pixmap(matrix=matrix, alpha=False)
-    image = np.frombuffer(pixmap.samples, dtype=np.uint8).reshape(
-        pixmap.height, pixmap.width, 3
-    )
-    lines, _ = _get_ocr_engine()(image)
-    if not lines:
-        return ""
-    return "\n".join(str(line[1]).strip() for line in lines if line[1])
+    try:
+        matrix = fitz.Matrix(OCR_ZOOM, OCR_ZOOM)
+        pixmap = page.get_pixmap(matrix=matrix, alpha=False)
+        image = np.frombuffer(pixmap.samples, dtype=np.uint8).reshape(
+            pixmap.height, pixmap.width, 3
+        )
+        lines, _ = _get_ocr_engine()(image)
+        if not lines:
+            return ""
+        return "\n".join(str(line[1]).strip() for line in lines if line[1])
+    except Exception as exc:
+        import warnings
+        warnings.warn(f"OCR failed for page {page.number}: {exc}")
+        return "" 
 
 
 def extract_text_from_pdf(

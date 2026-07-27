@@ -37,9 +37,19 @@ class UserProfile(BaseModel):
     nickname: str = ""
 
 
-def fullwidth_char_count(text: str) -> int:
-    """Count characters as full-width units (CJK=1, half-width ASCII=1 each)."""
-    return len(text.strip())
+import unicodedata
+
+
+def fullwidth_char_count(text: str) -> float:
+    """Count characters as full-width units (CJK=1, half-width ASCII=0.5)."""
+    count = 0.0
+    for char in text.strip():
+        width = unicodedata.east_asian_width(char)
+        if width in ("W", "F", "A"):
+            count += 1.0
+        else:
+            count += 0.5
+    return count
 
 
 def validate_nickname(nickname: str) -> tuple[bool, str]:
@@ -47,7 +57,7 @@ def validate_nickname(nickname: str) -> tuple[bool, str]:
     if not name:
         return False, "Nickname is required."
     if fullwidth_char_count(name) > NICKNAME_MAX_FULLWIDTH:
-        return False, f"Nickname must be at most {NICKNAME_MAX_FULLWIDTH} full-width characters."
+        return False, f"Nickname must be at most {NICKNAME_MAX_FULLWIDTH} full-width characters (or {NICKNAME_MAX_FULLWIDTH * 2} English letters)."
     if re.search(r"[\x00-\x1f]", name):
         return False, "Nickname contains invalid characters."
     return True, ""

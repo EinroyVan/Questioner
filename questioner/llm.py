@@ -33,8 +33,18 @@ def _extract_json_blob(text: str) -> str:
     if fence_match:
         return fence_match.group(1).strip()
 
-    start = cleaned.find("{")
-    end = cleaned.rfind("}")
+    start_brace = cleaned.find("{")
+    start_bracket = cleaned.find("[")
+    
+    if start_brace != -1 and (start_bracket == -1 or start_brace < start_bracket):
+        start = start_brace
+        end = cleaned.rfind("}")
+    elif start_bracket != -1:
+        start = start_bracket
+        end = cleaned.rfind("]")
+    else:
+        start, end = -1, -1
+
     if start != -1 and end != -1 and end > start:
         return cleaned[start : end + 1]
     return cleaned

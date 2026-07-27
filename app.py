@@ -242,9 +242,14 @@ def _ui_language() -> str:
 
 
 def _get_llm() -> LLMClient:
+    provider = st.session_state.llm_provider
+    api_key_key = f"llm_api_key_{provider}"
+    base_url_key = f"llm_base_url_{provider}"
     return LLMClient(
-        provider=st.session_state.llm_provider,
+        provider=provider,
+        api_key=st.session_state.get(api_key_key) or None,
         model=st.session_state.llm_model or None,
+        base_url=st.session_state.get(base_url_key) or None,
     )
 
 
@@ -311,7 +316,39 @@ def _render_sidebar() -> None:
     model = st.sidebar.text_input(t("sidebar.model"), value=st.session_state.llm_model or default_model)
     st.session_state.llm_model = model.strip() or default_model
 
-    if provider_is_configured(selected_provider):
+    # Custom API Key input (allows dynamic overriding)
+    env_api_key = os.getenv(spec.api_key_env, "")
+    api_key_key = f"llm_api_key_{selected_provider}"
+    stored_api_key = st.session_state.get(api_key_key, env_api_key)
+    input_api_key = st.sidebar.text_input(
+        f"{spec.label} API Key",
+        value=stored_api_key,
+        type="password",
+        key=api_key_key
+    )
+    custom_api_key = input_api_key.strip()
+
+    # Custom Base URL input (for providers with base_url_env, e.g., OpenAI or OpenAI compatible)
+    custom_base_url = ""
+    if spec.base_url_env:
+        env_base_url = os.getenv(spec.base_url_env, "")
+        if selected_provider == LLMProvider.OPENAI.value and not env_base_url:
+            env_base_url = "https://api.openai.com/v1"
+        elif selected_provider == LLMProvider.OPENAI_COMPAT.value and not env_base_url:
+            env_base_url = "https://api.deepseek.com/v1"
+        
+        base_url_key = f"llm_base_url_{selected_provider}"
+        stored_base_url = st.session_state.get(base_url_key, env_base_url)
+        input_base_url = st.sidebar.text_input(
+            "API Base URL", 
+            value=stored_base_url,
+            key=base_url_key
+        )
+        custom_base_url = input_base_url.strip()
+
+    # Verify if the API is configured either in .env or via dynamic inputs
+    is_api_ready = bool(custom_api_key)
+    if is_api_ready:
         st.sidebar.success(t("sidebar.api_configured", provider=spec.label))
     else:
         st.sidebar.error(t("sidebar.api_missing", provider=spec.label))
