@@ -36,6 +36,7 @@ from questioner.report_note import (
     build_study_report_bundle,
     metadata_is_present,
     render_metadata_markdown,
+    build_obsidian_literature_note,
 )
 from questioner.llm import LLMClient
 from questioner.pdf_reader import load_uploaded_document
@@ -1022,6 +1023,54 @@ def _step_grading() -> None:
                 mime="application/json",
                 use_container_width=True,
             )
+
+        # Obsidian Export Card
+        if knowledge:
+            st.write("")
+            st.subheader("📤 导出文献笔记到 Obsidian (Export to Obsidian)")
+            st.caption("基于您刚才提取的学术知识，精准蒸馏为 Obsidian 学术文献卡片，并自动写入您的 Obsidian 双链库中。")
+            
+            obs_col1, obs_col2 = st.columns([1, 2])
+            with obs_col1:
+                category = st.selectbox(
+                    "笔记分类 (Category)",
+                    options=["研究", "方法学", "综述"],
+                    index=0,
+                    key="obsidian_note_category"
+                )
+            
+            paper_title = knowledge.literature_metadata.title.strip()
+            if not paper_title or paper_title == "N/A":
+                paper_title = source_label if source_label != "Pasted text" else "Untitled_Paper"
+            
+            # Clean invalid filename characters
+            safe_title = re.sub(r'[\\/*?:"<>|]', "_", paper_title)[:120]
+            default_filename = f"{category}-{safe_title}"
+            
+            with obs_col2:
+                note_filename = st.text_input(
+                    "笔记文件名 (Filename)",
+                    value=default_filename,
+                    key="obsidian_note_filename"
+                )
+            
+            # Formulate note contents
+            obsidian_note_content = build_obsidian_literature_note(knowledge, category=category)
+            
+            with st.expander("预览 Obsidian 笔记内容 (Preview Note Content)", expanded=False):
+                st.code(obsidian_note_content, language="markdown")
+            
+            vault_base_path = Path("/mnt/g/我的云端硬盘/Obsitian_Vault/Einroy/")
+            target_path = vault_base_path / "文献" / f"{note_filename.strip()}.md"
+            
+            if st.button("🚀 一键写入 Obsidian 库 (Export to Obsidian)", use_container_width=True, type="primary"):
+                try:
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
+                    target_path.write_text(obsidian_note_content, encoding="utf-8")
+                    st.success(f"🎉 成功导出！笔记已安全写入您的 Obsidian 库：\n\n`{target_path}`")
+                    st.balloons()
+                except Exception as e:
+                    st.error(f"❌ 写入失败，请检查 G 盘是否正常挂载：\n\n{e}")
 
     st.divider()
     if st.button(t("common.back_quiz")):

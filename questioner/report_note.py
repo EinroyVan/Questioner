@@ -807,3 +807,111 @@ def build_study_report_bundle(
         "pdf_bytes": pdf_bytes,
         "filename_stem": stem,
     }
+
+
+def build_obsidian_literature_note(
+    knowledge: KnowledgeExtractionResult,
+    category: str = "研究"
+) -> str:
+    import re
+    metadata = knowledge.literature_metadata
+    analysis = knowledge.literature_analysis
+
+    # 1. Format date as YYYY.MM
+    raw_date = metadata.published_date.strip()
+    formatted_date = ""
+    if raw_date:
+        # Match YYYY-MM-DD or YYYY-MM or YYYY
+        match = re.search(r"(\d{4})[-./](\d{2})", raw_date)
+        if match:
+            formatted_date = f"{match.group(1)}.{match.group(2)}"
+        else:
+            match_year = re.search(r"\d{4}", raw_date)
+            if match_year:
+                formatted_date = match_year.group(0)
+    
+    if not formatted_date:
+        formatted_date = raw_date or "N/A"
+
+    # 2. Extract first author and affiliation
+    author = metadata.first_author.strip() or "Unknown Author"
+    institution = metadata.first_author_affiliation.strip() or "N/A"
+    journal = metadata.journal.strip() or "N/A"
+    impact_factor = metadata.impact_factor.strip() or "N/A"
+
+    # Build Frontmatter (Obsidian style tags and metadata)
+    tags_line = ""
+    if metadata.field_tags:
+        tags_line = "\ntags:\n" + "\n".join(f"  - {tag}" for tag in metadata.field_tags)
+
+    frontmatter = f"""---
+category: {category}
+journal: "{journal}"
+impact_factor: "{impact_factor}"
+first_author: "{author}"
+affiliation: "{institution}"
+published_date: {formatted_date}
+doi: "{metadata.doi}"{tags_line}
+---
+"""
+
+    # Build note body matching templates/literature_note.md exactly
+    body = f"""期刊：[[{journal}]]
+IF： {impact_factor}
+作者：[[{author}]]
+单位：{institution}
+时间：[[{formatted_date}]]
+
+- 背景（为什么要研究，跟之前的研究相比有什么创新点？）
+"""
+    # Insert background bullets from Introduction section
+    intro = analysis.introduction
+    if intro.hook:
+        body += f"\t- **起因 (Hook)**: {intro.hook}\n"
+    if intro.research_gap:
+        body += f"\t- **研究空白 (Gap)**: {intro.research_gap}\n"
+    if intro.proposed_approach:
+        body += f"\t- **提出方案 (Approach)**: {intro.proposed_approach}\n"
+    if not (intro.hook or intro.research_gap or intro.proposed_approach):
+        body += "\t- \n"
+
+    body += "- 假设（在解决什么问题？）\n"
+    # Formulate a dynamic hypothesis statement or leave a placeholder bullet
+    if intro.proposed_approach:
+        body += f"\t- 基于上述研究空白，假设能够通过 [[{intro.proposed_approach[:40]}...]] 解决当前科学瓶颈。\n"
+    else:
+        body += "\t- \n"
+
+    body += "- 方法（为什么要用这个方法，如何解决的）\n"
+    methods = analysis.methods
+    if methods.technical_innovation:
+        body += f"\t- **技术创新 (Innovation)**: {methods.technical_innovation}\n"
+    if methods.benchmarks_evaluation:
+        body += f"\t- **评估基准 (Evaluation)**: {methods.benchmarks_evaluation}\n"
+    if not (methods.technical_innovation or methods.benchmarks_evaluation):
+        body += "\t- \n"
+
+    body += "- 结果&结论\n"
+    results = analysis.results
+    if results.key_findings:
+        for finding in results.key_findings:
+            if finding.strip():
+                body += f"\t- **核心发现**: {finding.strip()}\n"
+    if results.evidence_quality:
+        body += f"\t- **证据质量**: {results.evidence_quality}\n"
+    
+    discussion = analysis.discussion
+    if discussion.limitations:
+        body += f"\t- **研究局限**: {discussion.limitations}\n"
+    if discussion.future_directions:
+        body += f"\t- **未来方向**: {discussion.future_directions}\n"
+    
+    if not (results.key_findings or results.evidence_quality or discussion.limitations or discussion.future_directions):
+        body += "\t- \n"
+
+    # Add entity wikilinks at the bottom to form a dense knowledge graph
+    if knowledge.entities:
+        body += "\n---\n\n### 🏷️ 关联概念 (Entity Graph Map)\n"
+        body += " ".join(f"[[{entity}]]" for entity in knowledge.entities) + "\n"
+
+    return frontmatter + "\n" + body
