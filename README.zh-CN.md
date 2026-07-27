@@ -1,5 +1,7 @@
 # Questioner
 
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io/deploy?repository=EinroyVan/Questioner&branch=main&main_file=app.py)
+
 自然科学文献学习工作流：**提取知识点 → 生成测验 → 批改评分**。
 
 适用于物理学、化学、生物学、地球科学、天文学、材料科学等自然科学领域。提供 Streamlit 网页界面与命令行工具。
@@ -14,8 +16,10 @@
 - **Easy 模式**：4 道单选题（A–D 四选一）+ 1 道简答题，仅反馈不计分
 - **Custom 模式**：自定义各题型数量
 - 多 LLM 后端：**Google Gemini**、**OpenAI**、**Anthropic Claude**、**OpenAI 兼容接口**
+- **动态 API 覆写**：支持直接在 Streamlit 网页侧边栏实时输入和更换 API Key 及 API Base URL 接口地址
+- **Obsidian 一键双链导出**：在结算页面精准蒸馏并一键导出学术卡片至本地 Obsidian 库（自动生成 Frontmatter 属性、分类与双向链接）
 - 界面多语言（Google 翻译）：中文、English、日本語、한국어 等
-- 本地个人成绩统计（需填写昵称）；团队排行榜占位接口
+- 本地个人成绩统计（支持全角/半角 CJK 字符混合的昵称长度计算）；团队排行榜占位接口
 
 ## 安装
 

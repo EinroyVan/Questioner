@@ -1,5 +1,7 @@
 # Questioner
 
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io/deploy?repository=EinroyVan/Questioner&branch=main&main_file=app.py)
+
 Natural-science literature learning workflow: **extract knowledge points → generate quiz → grade answers**.
 
 Works across physics, chemistry, biology, earth science, astronomy, materials science, and related fields. Streamlit web UI + CLI.
@@ -14,8 +16,10 @@ Works across physics, chemistry, biology, earth science, astronomy, materials sc
 - **Easy mode**: 4 single-choice (A–D) + 1 short-answer; feedback only
 - **Custom mode**: configure your own question mix
 - Multi-provider LLM: **Google Gemini**, **OpenAI**, **Anthropic Claude**, **OpenAI-compatible**
+- **Dynamic API Overrides**: Configure and change API Keys and Base URLs directly in the Web UI sidebar
+- **Obsidian Literature Exporter**: One-click export distilled notes into your local Obsidian Vault (YAML frontmatter + wikilinks)
 - UI languages via Google Translate (English, 中文, 日本語, 한국어, and more)
-- Personal score history (local) with nickname; team leaderboard placeholder
+- Personal score history (local) with CJK-aware nickname validation; team leaderboard placeholder
 
 ## Setup
 

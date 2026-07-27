@@ -2,6 +2,18 @@
 
 All notable changes to Questioner are documented in this file.
 
+## [2.1.0] — 2026-07-21
+
+### Added
+- **Obsidian Literature Note Exporter**: Added 1-click export of distilled literature notes with Obsidian-compatible metadata, YAML frontmatter, and custom categories (Research, Methodology, Review). Automatically saves to the active Obsidian Vault under G: Drive (`G:\我的云端硬盘\Obsitian_Vault\Einroy\文献`).
+- **Dynamic API Overrides**: Added interactive inputs in the Streamlit sidebar for overriding API Keys and Base URLs dynamically without restarting or modifying `.env` files.
+- **Robust Unittest Suite**: Created comprehensive test suite under `tests/test_questioner.py` covering nickname validation, fullwidth char calculations, JSON array extraction, and Obsidian note generation.
+
+### Improved & Fixed
+- **CJK Full-Width Nickname Sizing**: Replaced simple byte length with Python standard `unicodedata` East-Asian Width checks. Correctly counts half-width ASCII as 0.5 units and CJK characters as 1.0 unit.
+- **Robust JSON Extraction**: Enhanced `_extract_json_blob` in `llm.py` to extract both JSON objects (`{}`) and JSON arrays (`[]`) seamlessly.
+- **Robust OCR Fallback**: Wrapped OCR page reading in `pdf_reader.py` with try-except fallback protection to prevent page failures from halting the entire document ingestion pipeline.
+
 ## [1.3.4] — 2026-06-25
 
 ### Stability & imports
