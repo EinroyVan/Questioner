@@ -32,7 +32,7 @@ PROVIDER_SPECS: dict[LLMProvider, ProviderSpec] = {
         api_key_env="GOOGLE_API_KEY",
         model_env="GOOGLE_MODEL",
         base_url_env=None,
-        default_model="gemini-3.5-flash",
+        default_model="gemini-3.6-flash",
         docs_hint="https://aistudio.google.com/apikey",
     ),
     LLMProvider.OPENAI: ProviderSpec(
